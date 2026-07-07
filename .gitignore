@@ -52,3 +52,14 @@ pnpm-debug.log*
 
 # Windows / WSL downloaded-file metadata
 *:Zone.Identifier
+
+# ----------------------------------------------------
+# Rust
+# ----------------------------------------------------
+
+# Rust API build artifacts
+science-gateway/apps/api/target/
+
+# Windows executable artifacts
+*.exe
+*.pdb
