@@ -15,7 +15,6 @@ openfold/resources/
 tests/test_data/
 cutlass/
 *.txt
-*.png
 *.pdb
 *.json
 *.pkl

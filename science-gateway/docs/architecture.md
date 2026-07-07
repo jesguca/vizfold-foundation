@@ -1,3 +1,3 @@
 # Science Gateway Architecture
 
-![Science Gateway Architecture](img/VizfoldGateway.png)
+![Science Gateway Architecture](img/VizfoldGateway-1.png)
