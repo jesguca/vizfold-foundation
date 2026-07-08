@@ -49,48 +49,25 @@ npm install
 
 ---
 
-### Configure environment variables
-
-Create a local `.env` file from the example:
-
-```bash
-cp .env.example .env
-```
-
-On Windows PowerShell:
-
-```powershell
-Copy-Item .env.example .env
-```
-
-or simply duplicate the file manually.
-
----
-
-### Configure Prisma
-
-```bash
-npx prisma generate
-npx prisma migrate dev
-```
-
----
-
-### Start the application
+### Start the workbench prototype
 
 ```bash
 npm run dev
 ```
 
-The application will be available at:
+The workbench prototype will be available at:
 
 ```
 http://localhost:3000
 ```
 
+The workbench is currently work-in-progress and uses static mock data only. It does not own persistence and is not wired to the executor yet.
+
 ## Executor Development
 
-Run the Axum API locally from the gateway root:
+The Rust executor is the primary active implementation path.
+
+Run the Axum HTTP adapter locally from the gateway root:
 
 ```bash
 cd apps/executor

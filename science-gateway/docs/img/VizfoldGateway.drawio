@@ -53,7 +53,7 @@
         <mxCell id="BVEx4ZIuGmg4r7pGhIMX-9" edge="1" parent="1" source="BVEx4ZIuGmg4r7pGhIMX-1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;entryPerimeter=0;" target="BVEx4ZIuGmg4r7pGhIMX-7">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="BVEx4ZIuGmg4r7pGhIMX-10" connectable="0" parent="BVEx4ZIuGmg4r7pGhIMX-9" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=14;fontStyle=1" value="Prisma&lt;div&gt;ORM&lt;/div&gt;" vertex="1">
+        <mxCell id="BVEx4ZIuGmg4r7pGhIMX-10" connectable="0" parent="BVEx4ZIuGmg4r7pGhIMX-9" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=14;fontStyle=1" value="Frontend-only&lt;div&gt;prototype&lt;/div&gt;" vertex="1">
           <mxGeometry relative="1" x="0.1255" as="geometry">
             <mxPoint x="-10" as="offset" />
           </mxGeometry>

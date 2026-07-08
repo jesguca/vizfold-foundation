@@ -85,7 +85,8 @@ export function HomePageClient({
           <h1 className="brand-title">VizFold</h1>
           <p className="subtitle">
             A prototype multi-model protein structure visualization workbench for comparing
-            folding backends and organizing future runs.
+            folding backends and organizing future runs. This interface is work-in-progress
+            and currently uses mock frontend data only.
           </p>
         </div>
       </section>
@@ -94,7 +95,7 @@ export function HomePageClient({
         <section className="panel">
           <div className="panel-header">
             <h2>Run prototype job</h2>
-            <p>Local state only for now. No API connection yet.</p>
+            <p>Work-in-progress UI only for now. No persistence or executor connection yet.</p>
           </div>
 
           <form className="run-form" onSubmit={handleSubmit}>
