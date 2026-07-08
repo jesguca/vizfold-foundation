@@ -5,7 +5,7 @@ Prototype for the VizFold Science Gateway.
 ## Structure
 
 - `apps/web`: browser-based VizFold interface, runnable locally and deployable later as a science gateway frontend.
-- `apps/api`: backend API service placeholder.
+- `apps/api`: Rust backend API service built with Axum.
 - `packages/schemas`: shared data contracts.
 - `packages/adapters`: model adapter interfaces and implementations.
 - `examples`: sample inputs and outputs.
@@ -18,6 +18,7 @@ Prototype for the VizFold Science Gateway.
 - Node.js 20 LTS or later
 - npm
 - Git
+- Rust toolchain (`cargo`, `rustc`)
 
 > **Recommended:** Use `nvm` (Linux/macOS/WSL) or `nvm-windows` (Windows) to manage Node.js versions.
 
@@ -26,6 +27,7 @@ Verify your installation:
 ```bash
 node -v
 npm -v
+cargo -V
 ```
 
 ---
@@ -84,4 +86,26 @@ The application will be available at:
 
 ```
 http://localhost:3000
+```
+
+## API Development
+
+Run the Axum API locally from the gateway root:
+
+```bash
+cd apps/api
+cargo run
+```
+
+The health check will be available at:
+
+```
+http://127.0.0.1:3001/health
+```
+
+By default, the API uses SQLite at `apps/api/data/vizfold.db` and applies SeaORM migrations automatically on startup. To override the location, set `DATABASE_URL`, for example:
+
+```powershell
+$env:DATABASE_URL = "sqlite://data/vizfold.db?mode=rwc"
+cargo run
 ```
