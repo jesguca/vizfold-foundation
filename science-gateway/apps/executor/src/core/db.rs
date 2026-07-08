@@ -2,7 +2,7 @@ use std::path::Path;
 
 use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbErr, Statement};
 
-use crate::{config, migrations::MigratorTrait};
+use crate::core::{config, migrations::MigratorTrait};
 
 pub async fn connect_and_migrate() -> Result<DatabaseConnection, DbErr> {
     let database_url = config::database_url();
@@ -21,7 +21,7 @@ pub async fn connect_and_migrate() -> Result<DatabaseConnection, DbErr> {
     ))
     .await?;
 
-    crate::migrations::Migrator::up(&db, None).await?;
+    crate::core::migrations::Migrator::up(&db, None).await?;
 
     Ok(db)
 }

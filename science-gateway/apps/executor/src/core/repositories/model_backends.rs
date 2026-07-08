@@ -1,6 +1,6 @@
 use sea_orm::{ActiveModelTrait, DatabaseConnection, DbErr, EntityTrait, Set};
 
-use crate::entities::model_backends;
+use crate::core::entities::model_backends;
 
 pub async fn list(db: &DatabaseConnection) -> Result<Vec<model_backends::Model>, DbErr> {
     model_backends::Entity::find().all(db).await

@@ -1,8 +1,10 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# VizFold Workbench
+
+This is the Next.js workbench app for the VizFold science gateway prototype.
 
 ## Getting Started
 
-First, run the development server:
+Run the development server from `science-gateway/apps/workbench`:
 
 ```bash
 npm run dev

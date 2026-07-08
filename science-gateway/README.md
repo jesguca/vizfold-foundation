@@ -4,8 +4,8 @@ Prototype for the VizFold Science Gateway.
 
 ## Structure
 
-- `apps/web`: browser-based VizFold interface, runnable locally and deployable later as a science gateway frontend.
-- `apps/api`: Rust backend API service built with Axum.
+- `apps/workbench`: browser-based VizFold interface, runnable locally and deployable later as a science gateway frontend.
+- `apps/executor`: Rust backend executor service currently exposing an Axum HTTP adapter.
 - `packages/schemas`: shared data contracts.
 - `packages/adapters`: model adapter interfaces and implementations.
 - `examples`: sample inputs and outputs.
@@ -43,7 +43,7 @@ git clone ...
 ### Install dependencies
 
 ```bash
-cd science-gateway/apps/web
+cd science-gateway/apps/workbench
 npm install
 ```
 
@@ -88,12 +88,12 @@ The application will be available at:
 http://localhost:3000
 ```
 
-## API Development
+## Executor Development
 
 Run the Axum API locally from the gateway root:
 
 ```bash
-cd apps/api
+cd apps/executor
 cargo run
 ```
 
@@ -103,7 +103,7 @@ The health check will be available at:
 http://127.0.0.1:3001/health
 ```
 
-By default, the API uses SQLite at `apps/api/data/vizfold.db` and applies SeaORM migrations automatically on startup. To override the location, set `DATABASE_URL`, for example:
+By default, the executor uses SQLite at `apps/executor/data/vizfold.db` and applies SeaORM migrations automatically on startup. To override the location, set `DATABASE_URL`, for example:
 
 ```powershell
 $env:DATABASE_URL = "sqlite://data/vizfold.db?mode=rwc"

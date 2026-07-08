@@ -1,6 +1,6 @@
 use sea_orm::{DatabaseConnection, DbErr};
 
-use crate::{entities::artifacts, repositories};
+use crate::core::{entities::artifacts, repositories};
 
 pub async fn list_artifacts_for_run(
     db: &DatabaseConnection,

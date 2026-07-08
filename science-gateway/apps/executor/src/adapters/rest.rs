@@ -1,22 +1,17 @@
-mod config;
-mod db;
-mod entities;
-mod migrations;
-mod repositories;
-mod services;
-
 use axum::{Json, Router, routing::get};
 use serde_json::json;
 use tokio::net::TcpListener;
 
-#[tokio::main]
-async fn main() {
-    let _ = dotenvy::dotenv();
-    let db = db::connect_and_migrate()
-        .await
-        .expect("failed to initialize database");
+use crate::core::{config, execution::ExecutionCore};
 
-    let _ = services::model_backends::list_model_backends(&db)
+pub async fn serve() {
+    let _ = dotenvy::dotenv();
+
+    let core = ExecutionCore::bootstrap()
+        .await
+        .expect("failed to initialize execution core");
+
+    core.check_readiness()
         .await
         .expect("failed to query model backends");
 
@@ -27,6 +22,7 @@ async fn main() {
 
     println!("API listening on http://127.0.0.1:3001");
     println!("Database connected using {}", config::database_url());
+    let _ = core.db();
 
     axum::serve(listener, app)
         .await

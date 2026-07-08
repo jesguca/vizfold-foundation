@@ -2,7 +2,7 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter, Set,
 };
 
-use crate::entities::artifacts;
+use crate::core::entities::artifacts;
 
 pub async fn list_by_run(
     db: &DatabaseConnection,

@@ -1,6 +1,6 @@
 use sea_orm::{ActiveModelTrait, DatabaseConnection, DbErr, EntityTrait, Set};
 
-use crate::entities::runs;
+use crate::core::entities::runs;
 
 pub async fn list(db: &DatabaseConnection) -> Result<Vec<runs::Model>, DbErr> {
     runs::Entity::find().all(db).await

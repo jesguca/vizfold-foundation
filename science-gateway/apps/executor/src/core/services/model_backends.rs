@@ -1,6 +1,6 @@
 use sea_orm::{DatabaseConnection, DbErr};
 
-use crate::{entities::model_backends, repositories};
+use crate::core::{entities::model_backends, repositories};
 
 pub async fn list_model_backends(
     db: &DatabaseConnection,

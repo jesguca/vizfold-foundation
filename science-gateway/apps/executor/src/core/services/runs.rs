@@ -1,6 +1,6 @@
 use sea_orm::{DatabaseConnection, DbErr};
 
-use crate::{entities::runs, repositories};
+use crate::core::{entities::runs, repositories};
 
 pub async fn list_runs(db: &DatabaseConnection) -> Result<Vec<runs::Model>, DbErr> {
     repositories::runs::list(db).await
