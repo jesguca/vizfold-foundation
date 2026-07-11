@@ -9,47 +9,41 @@ impl MigrationTrait for Migration {
         manager
             .create_table(
                 Table::create()
-                    .table(ModelBackends::Table)
+                    .table(ExecutionTargets::Table)
                     .if_not_exists()
                     .col(
-                        ColumnDef::new(ModelBackends::Id)
+                        ColumnDef::new(ExecutionTargets::Id)
                             .integer()
                             .not_null()
                             .auto_increment()
                             .primary_key(),
                     )
                     .col(
-                        ColumnDef::new(ModelBackends::Slug)
+                        ColumnDef::new(ExecutionTargets::Slug)
                             .string()
                             .not_null()
                             .unique_key(),
                     )
-                    .col(ColumnDef::new(ModelBackends::Label).string().not_null())
-                    .col(ColumnDef::new(ModelBackends::Version).string())
-                    .col(ColumnDef::new(ModelBackends::Description).text())
+                    .col(ColumnDef::new(ExecutionTargets::Label).string().not_null())
                     .col(
-                        ColumnDef::new(ModelBackends::CapabilitiesJson)
+                        ColumnDef::new(ExecutionTargets::TargetType)
+                            .string()
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(ExecutionTargets::Description).text())
+                    .col(
+                        ColumnDef::new(ExecutionTargets::ParameterSchemaJson)
                             .text()
                             .not_null(),
                     )
                     .col(
-                        ColumnDef::new(ModelBackends::ArtifactCapabilitiesJson)
-                            .text()
-                            .not_null(),
-                    )
-                    .col(
-                        ColumnDef::new(ModelBackends::ParameterSchemaJson)
-                            .text()
-                            .not_null(),
-                    )
-                    .col(
-                        ColumnDef::new(ModelBackends::CreatedAt)
+                        ColumnDef::new(ExecutionTargets::CreatedAt)
                             .timestamp()
                             .not_null()
                             .default(Expr::current_timestamp()),
                     )
                     .col(
-                        ColumnDef::new(ModelBackends::UpdatedAt)
+                        ColumnDef::new(ExecutionTargets::UpdatedAt)
                             .timestamp()
                             .not_null()
                             .default(Expr::current_timestamp()),
@@ -61,21 +55,19 @@ impl MigrationTrait for Migration {
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager
-            .drop_table(Table::drop().table(ModelBackends::Table).to_owned())
+            .drop_table(Table::drop().table(ExecutionTargets::Table).to_owned())
             .await
     }
 }
 
 #[derive(DeriveIden)]
-enum ModelBackends {
+enum ExecutionTargets {
     Table,
     Id,
     Slug,
     Label,
-    Version,
+    TargetType,
     Description,
-    CapabilitiesJson,
-    ArtifactCapabilitiesJson,
     ParameterSchemaJson,
     CreatedAt,
     UpdatedAt,

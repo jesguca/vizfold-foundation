@@ -2,6 +2,17 @@ use sea_orm::{DatabaseConnection, DbErr};
 
 use crate::core::{entities::artifacts, repositories};
 
+use super::validation::require_json_object;
+
+#[derive(Clone, Debug)]
+pub struct RecordArtifactInput {
+    pub run_id: i32,
+    pub artifact_type: String,
+    pub format: String,
+    pub storage_uri: String,
+    pub metadata_json: String,
+}
+
 pub async fn list_artifacts_for_run(
     db: &DatabaseConnection,
     run_id: i32,
@@ -9,12 +20,11 @@ pub async fn list_artifacts_for_run(
     repositories::artifacts::list_by_run(db, run_id).await
 }
 
-pub async fn create_artifact(
+pub async fn record_artifact_manifest_entry(
     db: &DatabaseConnection,
-    run_id: i32,
-    kind: &str,
-    uri: &str,
-    metadata_json: Option<&str>,
+    input: RecordArtifactInput,
 ) -> Result<artifacts::Model, DbErr> {
-    repositories::artifacts::create(db, run_id, kind, uri, metadata_json).await
+    require_json_object("artifact metadata", &input.metadata_json)?;
+
+    repositories::artifacts::create(db, input).await
 }

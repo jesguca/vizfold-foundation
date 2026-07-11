@@ -9,6 +9,7 @@ pub struct ExecutionCore {
 impl ExecutionCore {
     pub async fn bootstrap() -> Result<Self, DbErr> {
         let db = db::connect_and_migrate().await?;
+        crate::core::seed::seed_defaults(&db).await?;
         Ok(Self { db })
     }
 

@@ -1,19 +1,86 @@
+use chrono::Utc;
 use sea_orm::{DatabaseConnection, DbErr};
 
-use crate::core::{entities::runs, repositories};
+use crate::core::{
+    entities::{artifacts, runs},
+    repositories,
+};
+
+use super::validation::{reject_unknown_keys, require_json_object};
+
+#[derive(Clone, Debug)]
+pub struct SubmitRunInput {
+    pub model_backend_id: i32,
+    pub execution_target_id: i32,
+    pub status: String,
+    pub input_sequence: String,
+    pub model_parameters_json: String,
+    pub execution_parameters_json: String,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct UpdateRunStatusInput {
+    pub status: String,
+    pub started_at: Option<Option<chrono::DateTime<Utc>>>,
+    pub completed_at: Option<Option<chrono::DateTime<Utc>>>,
+    pub error_message: Option<Option<String>>,
+}
+
+#[derive(Clone, Debug)]
+pub struct RunWithArtifacts {
+    pub run: runs::Model,
+    pub artifacts: Vec<artifacts::Model>,
+}
 
 pub async fn list_runs(db: &DatabaseConnection) -> Result<Vec<runs::Model>, DbErr> {
     repositories::runs::list(db).await
 }
 
-pub async fn create_run(
+pub async fn submit_run(
     db: &DatabaseConnection,
-    job_name: &str,
-    input_text: &str,
-    status: &str,
-    output_json: Option<&str>,
-    model_backend_id: i32,
+    input: SubmitRunInput,
 ) -> Result<runs::Model, DbErr> {
-    repositories::runs::create(db, job_name, input_text, status, output_json, model_backend_id)
-        .await
+    let backend = repositories::model_backends::find_by_id(db, input.model_backend_id)
+        .await?
+        .ok_or_else(|| DbErr::Custom("model backend does not exist".into()))?;
+    let target = repositories::execution_targets::find_by_id(db, input.execution_target_id)
+        .await?
+        .ok_or_else(|| DbErr::Custom("execution target does not exist".into()))?;
+
+    let model_schema = require_json_object(
+        "model backend parameter_schema",
+        &backend.parameter_schema_json,
+    )?;
+    let execution_schema = require_json_object(
+        "execution target parameter_schema",
+        &target.parameter_schema_json,
+    )?;
+    let model_params = require_json_object("model_parameters", &input.model_parameters_json)?;
+    let execution_params =
+        require_json_object("execution_parameters", &input.execution_parameters_json)?;
+
+    reject_unknown_keys("model_parameters", &model_schema, &model_params)?;
+    reject_unknown_keys("execution_parameters", &execution_schema, &execution_params)?;
+
+    repositories::runs::create(db, input).await
+}
+
+pub async fn update_run_status(
+    db: &DatabaseConnection,
+    run_id: i32,
+    update: UpdateRunStatusInput,
+) -> Result<runs::Model, DbErr> {
+    repositories::runs::update_status(db, run_id, update).await
+}
+
+pub async fn get_run_with_artifacts(
+    db: &DatabaseConnection,
+    run_id: i32,
+) -> Result<Option<RunWithArtifacts>, DbErr> {
+    let Some(run) = repositories::runs::find_by_id(db, run_id).await? else {
+        return Ok(None);
+    };
+
+    let artifacts = repositories::artifacts::list_by_run(db, run_id).await?;
+    Ok(Some(RunWithArtifacts { run, artifacts }))
 }

@@ -6,11 +6,11 @@ pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i32,
     pub run_id: i32,
-    pub kind: String,
-    pub uri: String,
-    pub metadata_json: Option<String>,
+    pub artifact_type: String,
+    pub format: String,
+    pub storage_uri: String,
+    pub metadata_json: String,
     pub created_at: DateTimeUtc,
-    pub updated_at: DateTimeUtc,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

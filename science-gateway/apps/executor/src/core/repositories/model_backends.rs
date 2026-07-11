@@ -1,23 +1,30 @@
 use sea_orm::{ActiveModelTrait, DatabaseConnection, DbErr, EntityTrait, Set};
 
-use crate::core::entities::model_backends;
+use crate::core::{entities::model_backends, services::model_backends::RegisterModelBackendInput};
 
 pub async fn list(db: &DatabaseConnection) -> Result<Vec<model_backends::Model>, DbErr> {
     model_backends::Entity::find().all(db).await
 }
 
+pub async fn find_by_id(
+    db: &DatabaseConnection,
+    id: i32,
+) -> Result<Option<model_backends::Model>, DbErr> {
+    model_backends::Entity::find_by_id(id).one(db).await
+}
+
 pub async fn create(
     db: &DatabaseConnection,
-    slug: &str,
-    label: &str,
-    summary: &str,
-    capabilities_json: &str,
+    input: RegisterModelBackendInput,
 ) -> Result<model_backends::Model, DbErr> {
     model_backends::ActiveModel {
-        slug: Set(slug.to_owned()),
-        label: Set(label.to_owned()),
-        summary: Set(summary.to_owned()),
-        capabilities_json: Set(capabilities_json.to_owned()),
+        slug: Set(input.slug),
+        label: Set(input.label),
+        version: Set(input.version),
+        description: Set(input.description),
+        capabilities_json: Set(input.capabilities_json),
+        artifact_capabilities_json: Set(input.artifact_capabilities_json),
+        parameter_schema_json: Set(input.parameter_schema_json),
         ..Default::default()
     }
     .insert(db)

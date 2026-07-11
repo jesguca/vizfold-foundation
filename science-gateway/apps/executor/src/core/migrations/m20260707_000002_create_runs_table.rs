@@ -18,28 +18,38 @@ impl MigrationTrait for Migration {
                             .auto_increment()
                             .primary_key(),
                     )
-                    .col(ColumnDef::new(Runs::JobName).string().not_null())
-                    .col(ColumnDef::new(Runs::InputText).text().not_null())
-                    .col(ColumnDef::new(Runs::Status).string().not_null())
-                    .col(ColumnDef::new(Runs::OutputJson).text())
                     .col(ColumnDef::new(Runs::ModelBackendId).integer().not_null())
+                    .col(ColumnDef::new(Runs::ExecutionTargetId).integer().not_null())
+                    .col(ColumnDef::new(Runs::Status).string().not_null())
+                    .col(ColumnDef::new(Runs::InputSequence).text().not_null())
+                    .col(ColumnDef::new(Runs::ModelParametersJson).text().not_null())
                     .col(
-                        ColumnDef::new(Runs::CreatedAt)
+                        ColumnDef::new(Runs::ExecutionParametersJson)
+                            .text()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(Runs::SubmittedAt)
                             .timestamp()
                             .not_null()
                             .default(Expr::current_timestamp()),
                     )
-                    .col(
-                        ColumnDef::new(Runs::UpdatedAt)
-                            .timestamp()
-                            .not_null()
-                            .default(Expr::current_timestamp()),
-                    )
+                    .col(ColumnDef::new(Runs::StartedAt).timestamp())
+                    .col(ColumnDef::new(Runs::CompletedAt).timestamp())
+                    .col(ColumnDef::new(Runs::ErrorMessage).text())
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk_runs_model_backend_id")
                             .from(Runs::Table, Runs::ModelBackendId)
                             .to(ModelBackends::Table, ModelBackends::Id)
+                            .on_delete(ForeignKeyAction::Restrict)
+                            .on_update(ForeignKeyAction::Cascade),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_runs_execution_target_id")
+                            .from(Runs::Table, Runs::ExecutionTargetId)
+                            .to(ExecutionTargets::Table, ExecutionTargets::Id)
                             .on_delete(ForeignKeyAction::Restrict)
                             .on_update(ForeignKeyAction::Cascade),
                     )
@@ -59,17 +69,26 @@ impl MigrationTrait for Migration {
 enum Runs {
     Table,
     Id,
-    JobName,
-    InputText,
-    Status,
-    OutputJson,
     ModelBackendId,
-    CreatedAt,
-    UpdatedAt,
+    ExecutionTargetId,
+    Status,
+    InputSequence,
+    ModelParametersJson,
+    ExecutionParametersJson,
+    SubmittedAt,
+    StartedAt,
+    CompletedAt,
+    ErrorMessage,
 }
 
 #[derive(DeriveIden)]
 enum ModelBackends {
+    Table,
+    Id,
+}
+
+#[derive(DeriveIden)]
+enum ExecutionTargets {
     Table,
     Id,
 }

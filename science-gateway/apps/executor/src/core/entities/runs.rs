@@ -5,13 +5,16 @@ use sea_orm::entity::prelude::*;
 pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i32,
-    pub job_name: String,
-    pub input_text: String,
-    pub status: String,
-    pub output_json: Option<String>,
     pub model_backend_id: i32,
-    pub created_at: DateTimeUtc,
-    pub updated_at: DateTimeUtc,
+    pub execution_target_id: i32,
+    pub status: String,
+    pub input_sequence: String,
+    pub model_parameters_json: String,
+    pub execution_parameters_json: String,
+    pub submitted_at: DateTimeUtc,
+    pub started_at: Option<DateTimeUtc>,
+    pub completed_at: Option<DateTimeUtc>,
+    pub error_message: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -24,6 +27,14 @@ pub enum Relation {
         on_delete = "Restrict"
     )]
     ModelBackend,
+    #[sea_orm(
+        belongs_to = "super::execution_targets::Entity",
+        from = "Column::ExecutionTargetId",
+        to = "super::execution_targets::Column::Id",
+        on_update = "Cascade",
+        on_delete = "Restrict"
+    )]
+    ExecutionTarget,
     #[sea_orm(has_many = "super::artifacts::Entity")]
     Artifacts,
 }
@@ -37,6 +48,12 @@ impl Related<super::model_backends::Entity> for Entity {
 impl Related<super::artifacts::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Artifacts.def()
+    }
+}
+
+impl Related<super::execution_targets::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::ExecutionTarget.def()
     }
 }
 
