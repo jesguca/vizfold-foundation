@@ -1,0 +1,70 @@
+---
+config:
+  layout: elk
+  theme: redux-color
+---
+erDiagram
+    direction LR
+
+    MODEL_BACKEND {
+        string id
+        string slug
+        string label
+        string version
+        string description
+        json artifact_capabilities
+        json parameter_schema
+    }
+
+    EXECUTION_TARGET {
+        string id
+        string slug
+        string type
+        string description
+        json parameter_schema
+    }
+
+    MODEL_INVOCATION_PROFILE {
+        string id
+        string model_backend_id
+        string execution_target_id
+        string invocation_kind
+        json config
+        json parameter_schema
+        datetime created_at
+        datetime updated_at
+    }
+
+    RUN {
+        string id
+        string model_backend_id
+        string execution_target_id
+        string invocation_profile_id
+        string status
+        string input_sequence
+        json model_parameters
+        json execution_parameters
+        datetime submitted_at
+        datetime started_at
+        datetime completed_at
+        string error_message
+    }
+
+    ARTIFACT {
+        string id
+        string run_id
+        string artifact_type
+        string format
+        string storage_uri
+        json metadata
+        datetime created_at
+    }
+
+    MODEL_BACKEND ||--o{ RUN : "selected_for"
+    EXECUTION_TARGET ||--o{ RUN : "runs_on"
+    MODEL_INVOCATION_PROFILE ||--o{ RUN : "uses"
+
+    MODEL_BACKEND ||--o{ MODEL_INVOCATION_PROFILE : "has_invocation"
+    EXECUTION_TARGET ||--o{ MODEL_INVOCATION_PROFILE : "supports_invocation"
+
+    RUN ||--o{ ARTIFACT : "produces"
