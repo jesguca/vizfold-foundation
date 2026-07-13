@@ -2,6 +2,20 @@
 
 ![Science Gateway Architecture](img/VizfoldGateway-1.png)
 
-# Metadata Model
+# VizFold Executor MVP Data Model
 
 ![Science Gateway Metadata Model](img/ERModel.png)
+
+This diagram describes the MVP data model for the Rust executor core. The goal is to separate model definition, execution environment, invocation configuration, concrete runs, and produced artifacts.
+
+`MODEL_BACKEND` represents a registered model implementation, such as OpenFold, ESMFold, or Boltz. It stores model-level metadata, the model parameter schema, and the artifact types the model can theoretically produce.
+
+`EXECUTION_TARGET` represents an environment where execution can happen, such as local runtime, Docker, HPC, or a science gateway. It stores target-level metadata and execution parameter schema, but does not store model-specific installation details.
+
+`MODEL_INVOCATION_PROFILE` connects a specific model backend to a specific execution target. It owns the model-target-specific invocation configuration, such as subprocess, Docker, SLURM, or gateway invocation details. This prevents model-specific paths or command templates from leaking into the generic execution target definition.
+
+`RUN` represents one concrete execution request. It selects a model backend, execution target, and invocation profile, then stores the selected model and execution parameters for that specific run.
+
+`ARTIFACT` represents a manifest entry for an output produced by a run. The database records what artifact exists and where it is stored, while the heavy scientific output files remain in external storage such as the filesystem, HPC storage, or object storage.
+
+This model intentionally does not include model-target artifact constraint logic in the MVP. Artifact capabilities remain model-level, and actual produced outputs are recorded through the artifact manifest.
