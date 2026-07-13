@@ -10,7 +10,6 @@ pub struct RegisterModelBackendInput {
     pub label: String,
     pub version: Option<String>,
     pub description: Option<String>,
-    pub capabilities_json: String,
     pub artifact_capabilities_json: String,
     pub parameter_schema_json: String,
 }
@@ -25,7 +24,6 @@ pub async fn register_model_backend(
     db: &DatabaseConnection,
     input: RegisterModelBackendInput,
 ) -> Result<model_backends::Model, DbErr> {
-    require_json_object("model backend capabilities", &input.capabilities_json)?;
     require_json_object(
         "model backend artifact_capabilities",
         &input.artifact_capabilities_json,

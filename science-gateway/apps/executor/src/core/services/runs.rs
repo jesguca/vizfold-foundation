@@ -12,6 +12,7 @@ use super::validation::{reject_unknown_keys, require_json_object};
 pub struct SubmitRunInput {
     pub model_backend_id: i32,
     pub execution_target_id: i32,
+    pub invocation_profile_id: i32,
     pub status: String,
     pub input_sequence: String,
     pub model_parameters_json: String,
@@ -46,6 +47,19 @@ pub async fn submit_run(
     let target = repositories::execution_targets::find_by_id(db, input.execution_target_id)
         .await?
         .ok_or_else(|| DbErr::Custom("execution target does not exist".into()))?;
+    let profile =
+        repositories::model_invocation_profiles::find_by_id(db, input.invocation_profile_id)
+            .await?
+            .ok_or_else(|| DbErr::Custom("model invocation profile does not exist".into()))?;
+
+    if profile.model_backend_id != input.model_backend_id
+        || profile.execution_target_id != input.execution_target_id
+    {
+        return Err(DbErr::Custom(
+            "model invocation profile does not match selected model backend and execution target"
+                .into(),
+        ));
+    }
 
     let model_schema = require_json_object(
         "model backend parameter_schema",
@@ -58,6 +72,10 @@ pub async fn submit_run(
     let model_params = require_json_object("model_parameters", &input.model_parameters_json)?;
     let execution_params =
         require_json_object("execution_parameters", &input.execution_parameters_json)?;
+    let _invocation_schema = require_json_object(
+        "model invocation profile parameter_schema",
+        &profile.parameter_schema_json,
+    )?;
 
     reject_unknown_keys("model_parameters", &model_schema, &model_params)?;
     reject_unknown_keys("execution_parameters", &execution_schema, &execution_params)?;

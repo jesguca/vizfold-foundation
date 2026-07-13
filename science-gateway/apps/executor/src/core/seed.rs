@@ -1,7 +1,7 @@
 use sea_orm::{ColumnTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter};
 
 use crate::core::{
-    entities::{execution_targets, model_backends},
+    entities::{execution_targets, model_backends, model_invocation_profiles},
     services,
 };
 
@@ -19,7 +19,6 @@ pub async fn seed_defaults(db: &DatabaseConnection) -> Result<(), DbErr> {
                 label: "OpenFold".into(),
                 version: Some("demo".into()),
                 description: Some("OpenFold backend placeholder for executor core development.".into()),
-                capabilities_json: r#"{"family":"structure_prediction"}"#.into(),
                 artifact_capabilities_json:
                     r#"{"structure":{"formats":["pdb","cif"],"required":true},"confidence_metrics":{"formats":["json"],"required":false}}"#
                         .into(),
@@ -41,12 +40,42 @@ pub async fn seed_defaults(db: &DatabaseConnection) -> Result<(), DbErr> {
             db,
             services::execution_targets::RegisterExecutionTargetInput {
                 slug: "local-mock".into(),
-                label: "Local Mock".into(),
                 target_type: "local".into(),
                 description: Some("Local mock execution target for development and tests.".into()),
                 parameter_schema_json:
                     r#"{"type":"object","properties":{"gpu_count":{"type":"integer","minimum":0,"default":0}}}"#
                         .into(),
+            },
+        )
+        .await?;
+    }
+
+    let backend = model_backends::Entity::find()
+        .filter(model_backends::Column::Slug.eq("openfold"))
+        .one(db)
+        .await?
+        .ok_or_else(|| DbErr::Custom("seeded OpenFold model backend is missing".into()))?;
+    let target = execution_targets::Entity::find()
+        .filter(execution_targets::Column::Slug.eq("local-mock"))
+        .one(db)
+        .await?
+        .ok_or_else(|| DbErr::Custom("seeded local mock execution target is missing".into()))?;
+
+    if model_invocation_profiles::Entity::find()
+        .filter(model_invocation_profiles::Column::ModelBackendId.eq(backend.id))
+        .filter(model_invocation_profiles::Column::ExecutionTargetId.eq(target.id))
+        .one(db)
+        .await?
+        .is_none()
+    {
+        services::model_invocation_profiles::register_model_invocation_profile(
+            db,
+            services::model_invocation_profiles::RegisterModelInvocationProfileInput {
+                model_backend_id: backend.id,
+                execution_target_id: target.id,
+                invocation_kind: "mock".into(),
+                config_json: r#"{"mode":"local_mock"}"#.into(),
+                parameter_schema_json: r#"{"type":"object","properties":{}}"#.into(),
             },
         )
         .await?;

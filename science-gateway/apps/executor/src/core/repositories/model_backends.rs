@@ -22,7 +22,6 @@ pub async fn create(
         label: Set(input.label),
         version: Set(input.version),
         description: Set(input.description),
-        capabilities_json: Set(input.capabilities_json),
         artifact_capabilities_json: Set(input.artifact_capabilities_json),
         parameter_schema_json: Set(input.parameter_schema_json),
         ..Default::default()

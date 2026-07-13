@@ -24,7 +24,6 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .unique_key(),
                     )
-                    .col(ColumnDef::new(ExecutionTargets::Label).string().not_null())
                     .col(
                         ColumnDef::new(ExecutionTargets::TargetType)
                             .string()
@@ -65,7 +64,6 @@ enum ExecutionTargets {
     Table,
     Id,
     Slug,
-    Label,
     TargetType,
     Description,
     ParameterSchemaJson,

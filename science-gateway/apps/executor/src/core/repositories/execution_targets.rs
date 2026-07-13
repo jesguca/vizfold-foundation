@@ -23,7 +23,6 @@ pub async fn create(
 ) -> Result<execution_targets::Model, DbErr> {
     execution_targets::ActiveModel {
         slug: Set(input.slug),
-        label: Set(input.label),
         target_type: Set(input.target_type),
         description: Set(input.description),
         parameter_schema_json: Set(input.parameter_schema_json),

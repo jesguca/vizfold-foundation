@@ -9,6 +9,7 @@ use crate::core::{
         artifacts::{self, RecordArtifactInput},
         execution_targets::{self, RegisterExecutionTargetInput},
         model_backends::{self, RegisterModelBackendInput},
+        model_invocation_profiles::{self, RegisterModelInvocationProfileInput},
         runs::{self, SubmitRunInput, UpdateRunStatusInput},
     },
 };
@@ -30,7 +31,6 @@ fn sample_model_backend_input() -> RegisterModelBackendInput {
         label: "OpenFold".into(),
         version: Some("1.0".into()),
         description: Some("Reference folding backend".into()),
-        capabilities_json: json!({"family": "structure_prediction"}).to_string(),
         artifact_capabilities_json: json!({
             "structure": { "formats": ["pdb", "cif"], "required": true },
             "confidence_metrics": { "formats": ["json"], "required": false }
@@ -49,7 +49,6 @@ fn sample_model_backend_input() -> RegisterModelBackendInput {
 fn sample_execution_target_input() -> RegisterExecutionTargetInput {
     RegisterExecutionTargetInput {
         slug: "local-mock".into(),
-        label: "Local Mock".into(),
         target_type: "local".into(),
         description: Some("Test execution target".into()),
         parameter_schema_json: json!({
@@ -63,18 +62,26 @@ fn sample_execution_target_input() -> RegisterExecutionTargetInput {
     }
 }
 
+fn sample_invocation_profile_input(
+    model_backend_id: i32,
+    execution_target_id: i32,
+) -> RegisterModelInvocationProfileInput {
+    RegisterModelInvocationProfileInput {
+        model_backend_id,
+        execution_target_id,
+        invocation_kind: "mock".into(),
+        config_json: json!({"mode": "test"}).to_string(),
+        parameter_schema_json: json!({"type": "object", "properties": {}}).to_string(),
+    }
+}
+
 #[tokio::test]
-async fn creates_model_backend() -> Result<(), DbErr> {
+async fn creates_model_backend_without_capabilities_json() -> Result<(), DbErr> {
     let db = test_db().await?;
 
     let backend = model_backends::register_model_backend(&db, sample_model_backend_input()).await?;
 
     assert_eq!(backend.slug, "openfold");
-    assert!(
-        serde_json::from_str::<serde_json::Value>(&backend.capabilities_json)
-            .expect("capabilities_json should parse")
-            .is_object()
-    );
     assert!(
         serde_json::from_str::<serde_json::Value>(&backend.artifact_capabilities_json)
             .expect("artifact_capabilities_json should parse")
@@ -96,17 +103,61 @@ async fn creates_execution_target() -> Result<(), DbErr> {
 }
 
 #[tokio::test]
+async fn creates_model_invocation_profile() -> Result<(), DbErr> {
+    let db = test_db().await?;
+    let backend = model_backends::register_model_backend(&db, sample_model_backend_input()).await?;
+    let target =
+        execution_targets::register_execution_target(&db, sample_execution_target_input()).await?;
+
+    let profile = model_invocation_profiles::register_model_invocation_profile(
+        &db,
+        sample_invocation_profile_input(backend.id, target.id),
+    )
+    .await?;
+
+    assert_eq!(profile.model_backend_id, backend.id);
+    assert_eq!(profile.execution_target_id, target.id);
+    assert_eq!(profile.invocation_kind, "mock");
+    Ok(())
+}
+
+#[tokio::test]
+async fn lists_model_invocation_profiles() -> Result<(), DbErr> {
+    let db = test_db().await?;
+    let backend = model_backends::register_model_backend(&db, sample_model_backend_input()).await?;
+    let target =
+        execution_targets::register_execution_target(&db, sample_execution_target_input()).await?;
+    let _profile = model_invocation_profiles::register_model_invocation_profile(
+        &db,
+        sample_invocation_profile_input(backend.id, target.id),
+    )
+    .await?;
+
+    let profiles = model_invocation_profiles::list_model_invocation_profiles(&db).await?;
+
+    assert_eq!(profiles.len(), 1);
+    assert_eq!(profiles[0].model_backend_id, backend.id);
+    Ok(())
+}
+
+#[tokio::test]
 async fn creates_run_with_separate_parameter_sets() -> Result<(), DbErr> {
     let db = test_db().await?;
     let backend = model_backends::register_model_backend(&db, sample_model_backend_input()).await?;
     let target =
         execution_targets::register_execution_target(&db, sample_execution_target_input()).await?;
+    let profile = model_invocation_profiles::register_model_invocation_profile(
+        &db,
+        sample_invocation_profile_input(backend.id, target.id),
+    )
+    .await?;
 
     let run = runs::submit_run(
         &db,
         SubmitRunInput {
             model_backend_id: backend.id,
             execution_target_id: target.id,
+            invocation_profile_id: profile.id,
             status: "submitted".into(),
             input_sequence: "MSTNPKPQRITF".into(),
             model_parameters_json: json!({"num_recycles": 5}).to_string(),
@@ -117,7 +168,53 @@ async fn creates_run_with_separate_parameter_sets() -> Result<(), DbErr> {
 
     assert_eq!(run.model_backend_id, backend.id);
     assert_eq!(run.execution_target_id, target.id);
+    assert_eq!(run.invocation_profile_id, profile.id);
     assert!(run.started_at.is_none());
+    Ok(())
+}
+
+#[tokio::test]
+async fn rejects_run_with_mismatched_invocation_profile() -> Result<(), DbErr> {
+    let db = test_db().await?;
+    let backend = model_backends::register_model_backend(&db, sample_model_backend_input()).await?;
+    let target =
+        execution_targets::register_execution_target(&db, sample_execution_target_input()).await?;
+    let other_target = execution_targets::register_execution_target(
+        &db,
+        RegisterExecutionTargetInput {
+            slug: "docker-local".into(),
+            target_type: "docker".into(),
+            description: Some("Other target".into()),
+            parameter_schema_json: json!({"type": "object", "properties": {}}).to_string(),
+        },
+    )
+    .await?;
+    let mismatched_profile = model_invocation_profiles::register_model_invocation_profile(
+        &db,
+        sample_invocation_profile_input(backend.id, other_target.id),
+    )
+    .await?;
+
+    let error = runs::submit_run(
+        &db,
+        SubmitRunInput {
+            model_backend_id: backend.id,
+            execution_target_id: target.id,
+            invocation_profile_id: mismatched_profile.id,
+            status: "submitted".into(),
+            input_sequence: "MSTNPKPQRITF".into(),
+            model_parameters_json: json!({"num_recycles": 5}).to_string(),
+            execution_parameters_json: json!({"gpu_count": 1}).to_string(),
+        },
+    )
+    .await
+    .expect_err("mismatched invocation profile should fail");
+
+    assert!(
+        error
+            .to_string()
+            .contains("model invocation profile does not match")
+    );
     Ok(())
 }
 
@@ -127,12 +224,18 @@ async fn rejects_non_object_json_parameters() -> Result<(), DbErr> {
     let backend = model_backends::register_model_backend(&db, sample_model_backend_input()).await?;
     let target =
         execution_targets::register_execution_target(&db, sample_execution_target_input()).await?;
+    let profile = model_invocation_profiles::register_model_invocation_profile(
+        &db,
+        sample_invocation_profile_input(backend.id, target.id),
+    )
+    .await?;
 
     let error = runs::submit_run(
         &db,
         SubmitRunInput {
             model_backend_id: backend.id,
             execution_target_id: target.id,
+            invocation_profile_id: profile.id,
             status: "submitted".into(),
             input_sequence: "MSTNPKPQRITF".into(),
             model_parameters_json: "[]".into(),
@@ -156,11 +259,17 @@ async fn records_artifact_manifest_entry() -> Result<(), DbErr> {
     let backend = model_backends::register_model_backend(&db, sample_model_backend_input()).await?;
     let target =
         execution_targets::register_execution_target(&db, sample_execution_target_input()).await?;
+    let profile = model_invocation_profiles::register_model_invocation_profile(
+        &db,
+        sample_invocation_profile_input(backend.id, target.id),
+    )
+    .await?;
     let run = runs::submit_run(
         &db,
         SubmitRunInput {
             model_backend_id: backend.id,
             execution_target_id: target.id,
+            invocation_profile_id: profile.id,
             status: "submitted".into(),
             input_sequence: "MSTNPKPQRITF".into(),
             model_parameters_json: json!({"num_recycles": 2}).to_string(),
@@ -192,11 +301,17 @@ async fn retrieves_run_with_artifacts() -> Result<(), DbErr> {
     let backend = model_backends::register_model_backend(&db, sample_model_backend_input()).await?;
     let target =
         execution_targets::register_execution_target(&db, sample_execution_target_input()).await?;
+    let profile = model_invocation_profiles::register_model_invocation_profile(
+        &db,
+        sample_invocation_profile_input(backend.id, target.id),
+    )
+    .await?;
     let run = runs::submit_run(
         &db,
         SubmitRunInput {
             model_backend_id: backend.id,
             execution_target_id: target.id,
+            invocation_profile_id: profile.id,
             status: "submitted".into(),
             input_sequence: "MSTNPKPQRITF".into(),
             model_parameters_json: json!({"num_recycles": 2}).to_string(),
@@ -232,11 +347,17 @@ async fn artifact_manifest_stores_uri_and_metadata_only() -> Result<(), DbErr> {
     let backend = model_backends::register_model_backend(&db, sample_model_backend_input()).await?;
     let target =
         execution_targets::register_execution_target(&db, sample_execution_target_input()).await?;
+    let profile = model_invocation_profiles::register_model_invocation_profile(
+        &db,
+        sample_invocation_profile_input(backend.id, target.id),
+    )
+    .await?;
     let run = runs::submit_run(
         &db,
         SubmitRunInput {
             model_backend_id: backend.id,
             execution_target_id: target.id,
+            invocation_profile_id: profile.id,
             status: "submitted".into(),
             input_sequence: "MSTNPKPQRITF".into(),
             model_parameters_json: json!({"num_recycles": 2}).to_string(),
@@ -269,11 +390,17 @@ async fn updates_run_status() -> Result<(), DbErr> {
     let backend = model_backends::register_model_backend(&db, sample_model_backend_input()).await?;
     let target =
         execution_targets::register_execution_target(&db, sample_execution_target_input()).await?;
+    let profile = model_invocation_profiles::register_model_invocation_profile(
+        &db,
+        sample_invocation_profile_input(backend.id, target.id),
+    )
+    .await?;
     let run = runs::submit_run(
         &db,
         SubmitRunInput {
             model_backend_id: backend.id,
             execution_target_id: target.id,
+            invocation_profile_id: profile.id,
             status: "submitted".into(),
             input_sequence: "MSTNPKPQRITF".into(),
             model_parameters_json: json!({"num_recycles": 2}).to_string(),

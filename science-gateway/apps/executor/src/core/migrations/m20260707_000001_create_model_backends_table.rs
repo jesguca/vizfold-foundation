@@ -28,11 +28,6 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(ModelBackends::Version).string())
                     .col(ColumnDef::new(ModelBackends::Description).text())
                     .col(
-                        ColumnDef::new(ModelBackends::CapabilitiesJson)
-                            .text()
-                            .not_null(),
-                    )
-                    .col(
                         ColumnDef::new(ModelBackends::ArtifactCapabilitiesJson)
                             .text()
                             .not_null(),
@@ -74,7 +69,6 @@ enum ModelBackends {
     Label,
     Version,
     Description,
-    CapabilitiesJson,
     ArtifactCapabilitiesJson,
     ParameterSchemaJson,
     CreatedAt,

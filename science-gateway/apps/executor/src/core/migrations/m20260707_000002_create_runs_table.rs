@@ -20,6 +20,11 @@ impl MigrationTrait for Migration {
                     )
                     .col(ColumnDef::new(Runs::ModelBackendId).integer().not_null())
                     .col(ColumnDef::new(Runs::ExecutionTargetId).integer().not_null())
+                    .col(
+                        ColumnDef::new(Runs::InvocationProfileId)
+                            .integer()
+                            .not_null(),
+                    )
                     .col(ColumnDef::new(Runs::Status).string().not_null())
                     .col(ColumnDef::new(Runs::InputSequence).text().not_null())
                     .col(ColumnDef::new(Runs::ModelParametersJson).text().not_null())
@@ -53,6 +58,14 @@ impl MigrationTrait for Migration {
                             .on_delete(ForeignKeyAction::Restrict)
                             .on_update(ForeignKeyAction::Cascade),
                     )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_runs_invocation_profile_id")
+                            .from(Runs::Table, Runs::InvocationProfileId)
+                            .to(ModelInvocationProfiles::Table, ModelInvocationProfiles::Id)
+                            .on_delete(ForeignKeyAction::Restrict)
+                            .on_update(ForeignKeyAction::Cascade),
+                    )
                     .to_owned(),
             )
             .await
@@ -71,6 +84,7 @@ enum Runs {
     Id,
     ModelBackendId,
     ExecutionTargetId,
+    InvocationProfileId,
     Status,
     InputSequence,
     ModelParametersJson,
@@ -89,6 +103,12 @@ enum ModelBackends {
 
 #[derive(DeriveIden)]
 enum ExecutionTargets {
+    Table,
+    Id,
+}
+
+#[derive(DeriveIden)]
+enum ModelInvocationProfiles {
     Table,
     Id,
 }

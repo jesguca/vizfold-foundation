@@ -7,7 +7,6 @@ use super::validation::require_json_object;
 #[derive(Clone, Debug)]
 pub struct RegisterExecutionTargetInput {
     pub slug: String,
-    pub label: String,
     pub target_type: String,
     pub description: Option<String>,
     pub parameter_schema_json: String,

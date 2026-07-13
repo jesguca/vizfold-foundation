@@ -17,6 +17,7 @@ pub async fn create(db: &DatabaseConnection, input: SubmitRunInput) -> Result<ru
     runs::ActiveModel {
         model_backend_id: Set(input.model_backend_id),
         execution_target_id: Set(input.execution_target_id),
+        invocation_profile_id: Set(input.invocation_profile_id),
         status: Set(input.status),
         input_sequence: Set(input.input_sequence),
         model_parameters_json: Set(input.model_parameters_json),

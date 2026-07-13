@@ -7,7 +7,6 @@ pub struct Model {
     pub id: i32,
     #[sea_orm(unique)]
     pub slug: String,
-    pub label: String,
     pub target_type: String,
     pub description: Option<String>,
     pub parameter_schema_json: String,
@@ -19,11 +18,19 @@ pub struct Model {
 pub enum Relation {
     #[sea_orm(has_many = "super::runs::Entity")]
     Runs,
+    #[sea_orm(has_many = "super::model_invocation_profiles::Entity")]
+    ModelInvocationProfiles,
 }
 
 impl Related<super::runs::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Runs.def()
+    }
+}
+
+impl Related<super::model_invocation_profiles::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::ModelInvocationProfiles.def()
     }
 }
 
