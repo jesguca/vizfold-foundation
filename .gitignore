@@ -16,7 +16,6 @@ tests/test_data/
 cutlass/
 *.txt
 *.pdb
-*.json
 *.pkl
 *.fasta
 *.sto
