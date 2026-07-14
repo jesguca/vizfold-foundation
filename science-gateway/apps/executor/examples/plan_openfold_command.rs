@@ -98,6 +98,13 @@ fn openfold_parameter_schema() -> serde_json::Value {
                 "default": "model_1_ptm",
                 "cli_flag": "--config_preset"
             },
+            "fasta_dir": {
+                "type": "path",
+                "source": "execution_parameters",
+                "parameter": "fasta_dir",
+                "positional": true,
+                "position": 1
+            },
             "template_mmcif_dir": {
                 "type": "path",
                 "source": "data_dir",

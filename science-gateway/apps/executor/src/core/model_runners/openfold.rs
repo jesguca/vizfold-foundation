@@ -40,10 +40,9 @@ pub fn plan_openfold_command(
     let current_dir = optional_string(&config, "working_dir").map(PathBuf::from);
     let env = parse_env(&config)?;
 
-    let fasta_dir = required_string(&execution_parameters, "fasta_dir")?;
     let output_dir = required_string(&execution_parameters, "output_dir")?;
 
-    let mut args = vec!["-u".into(), script, fasta_dir];
+    let mut args = vec!["-u".into(), script];
 
     append_model_schema_args(
         &mut args,
@@ -223,6 +222,11 @@ fn resolve_declared_value(
         let data_dir = required_string(execution_parameters, "data_dir")?;
         let relative_path = required_string(declaration, "relative_path")?;
         return Ok(data_path(&data_dir, &relative_path));
+    }
+
+    if optional_string(declaration, "source").as_deref() == Some("execution_parameters") {
+        let parameter_name = required_string(declaration, "parameter")?;
+        return required_string(execution_parameters, &parameter_name);
     }
 
     let name = required_string(declaration, "name")?;
@@ -456,6 +460,13 @@ mod tests {
                     "default": "model_1_ptm",
                     "cli_flag": "--config_preset"
                 },
+                "fasta_dir": {
+                    "type": "path",
+                    "source": "execution_parameters",
+                    "parameter": "fasta_dir",
+                    "positional": true,
+                    "position": 1
+                },
                 "template_mmcif_dir": {
                     "type": "path",
                     "source": "data_dir",
@@ -544,8 +555,8 @@ mod tests {
         assert_eq!(command.env["PYTHONPATH"], "/repo");
         assert_eq!(command.args[0], "-u");
         assert_eq!(command.args[1], "run_pretrained_openfold.py");
-        assert!(command.args.contains(&"/tmp/fasta".into()));
-        assert!(command.args.contains(&"/data/pdb_mmcif/mmcif_files".into()));
+        assert_eq!(command.args[2], "/tmp/fasta");
+        assert_eq!(command.args[3], "/data/pdb_mmcif/mmcif_files");
         assert!(command.args.contains(&"--output_dir".into()));
         assert!(command.args.contains(&"/tmp/output".into()));
         assert!(command.args.contains(&"--config_preset".into()));
@@ -782,6 +793,27 @@ mod tests {
         .expect_err("missing data_dir should fail");
 
         assert!(error.to_string().contains("data_dir is required"));
+    }
+
+    #[test]
+    fn returns_clear_error_when_schema_declared_fasta_dir_is_missing() {
+        let error = plan_openfold_command(
+            &model_backend(),
+            &execution_target(),
+            &invocation_profile(config()),
+            &run(
+                json!({}).to_string(),
+                json!({
+                    "output_dir": "/tmp/output",
+                    "data_dir": "/data",
+                    "model_device": "cuda:0"
+                })
+                .to_string(),
+            ),
+        )
+        .expect_err("missing fasta_dir should fail");
+
+        assert!(error.to_string().contains("fasta_dir is required"));
     }
 
     #[test]
