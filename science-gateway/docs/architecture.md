@@ -24,8 +24,12 @@ This model intentionally does not include model-target artifact constraint logic
 
 ![Science Gateway Metadata Model](img/ExecutionFlow.png)
 
-The executor separates registration, planning, execution, and artifact recording. `MODEL_BACKEND` defines what model exists, `EXECUTION_TARGET` defines where execution can happen, and `MODEL_INVOCATION_PROFILE` defines how a specific model runs on a specific target.
+The executor separates registration, planning, optional preflight, execution, and artifact recording. `MODEL_BACKEND` defines what model exists, `EXECUTION_TARGET` defines where execution can happen, and `MODEL_INVOCATION_PROFILE` defines how a specific model runs on a specific target.
 
-For a concrete `RUN`, the executor loads the selected model, target, invocation profile, and parameters. A planner then converts those records into a `CommandSpec`, which is the final resolved execution plan containing the program, arguments, working directory, and environment variables. The `CommandRunner` executes that command and returns a `CommandOutput`.
+For a concrete `RUN`, the executor loads the selected model, target, invocation profile, and parameters. A planner then converts those records into a `CommandSpec`, which is the final resolved execution plan containing the program, arguments, working directory, and environment variables.
 
-For the MVP, OpenFold can be supported through a built-in Rust planner. Later, the same abstraction can support DB-driven command templates or external model plugins without changing the core execution flow. Produced outputs are not stored directly in the database; they remain in external storage and are registered as `ARTIFACT` manifest entries.
+Before execution, the command may pass through an optional `PreflightRunner`. A preflight runner performs model-specific readiness checks for the selected execution target environment and returns a `PreflightReport` with passed checks, warnings, or failures. If no preflight runner is available, the workflow can proceed directly to execution. If preflight failures are reported, execution is skipped and the workflow returns the report.
+
+The `ExecutionWorkflow` coordinates this flow: `CommandSpec` → optional `PreflightRunner` → `CommandRunner`. The `CommandRunner` executes the command and returns a `CommandOutput` containing the exit code, stdout, and stderr.
+
+For the MVP, OpenFold can be supported through a built-in Rust planner and an optional OpenFold preflight runner. Later, the same abstractions can support DB-driven command templates, external model plugins, richer preflight checks, and additional execution targets without changing the core execution flow. Produced outputs are not stored directly in the database; they remain in external storage and are registered as `ARTIFACT` manifest entries.
