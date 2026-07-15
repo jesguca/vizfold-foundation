@@ -1,6 +1,5 @@
 ---
 config:
-  layout: elk
   theme: default
 ---
 flowchart LR
@@ -22,7 +21,13 @@ flowchart LR
         SPEC["CommandSpec<br/>Resolved program, args, cwd, env"]
     end
 
+    subgraph Preflight["Optional Preflight"]
+        PFRUNNER["PreflightRunner<br/>Model-specific readiness checks<br/>(optional)"]
+        PFREPORT["PreflightReport<br/>passed / warnings / failures"]
+    end
+
     subgraph Execution["Execution"]
+        WORKFLOW["Execution Workflow<br/>plan → optional preflight → run"]
         RUNNER["CommandRunner<br/>Runs CommandSpec"]
         OUTPUT["CommandOutput<br/>exit code, stdout, stderr"]
     end
@@ -49,7 +54,13 @@ flowchart LR
     TEMPLATE -. future .-> SPEC
     PLUGIN -. future .-> SPEC
 
-    SPEC --> RUNNER
+    SPEC --> WORKFLOW
+    PFRUNNER -. optional .-> WORKFLOW
+    WORKFLOW --> PFREPORT
+    PFREPORT -->|no failures| RUNNER
+    PFREPORT -->|failures| SKIP["Skip execution<br/>return workflow result"]
+    WORKFLOW -->|no preflight defined| RUNNER
+
     RUNNER --> OUTPUT
     OUTPUT --> ARTIFACT
     STORAGE --> ARTIFACT
