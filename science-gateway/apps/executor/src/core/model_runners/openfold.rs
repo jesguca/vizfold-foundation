@@ -69,8 +69,9 @@ pub fn plan_openfold_command(
         args.extend(["--use_precomputed_alignments".into(), alignment_dir]);
     }
 
-    // The OpenFold script in this repository exposes --config_preset, but not
-    // --model_preset. Keep model_preset out of the resolved command for now.
+    // Intentionally do not emit model_preset. The OpenFold script used by this
+    // repository currently exposes --config_preset, and model_preset is not part
+    // of the MVP OpenFold parameter schema.
 
     Ok(CommandSpec {
         program,

@@ -5,6 +5,7 @@ pub mod entities;
 pub mod execution;
 pub mod migrations;
 pub mod model_runners;
+pub mod preflight;
 pub mod repositories;
 pub mod seed;
 pub mod services;
