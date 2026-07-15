@@ -1,4 +1,7 @@
-use std::{collections::BTreeMap, path::PathBuf};
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+};
 
 use sea_orm::DbErr;
 use serde_json::Value;
@@ -6,6 +9,7 @@ use serde_json::Value;
 use crate::core::{
     commands::CommandSpec,
     entities::{execution_targets, model_backends, model_invocation_profiles, runs},
+    preflight::{PreflightCheck, PreflightReport},
 };
 
 pub fn plan_openfold_command(
@@ -79,6 +83,164 @@ pub fn plan_openfold_command(
         current_dir,
         env,
     })
+}
+
+pub fn preflight_openfold(
+    command: &CommandSpec,
+    run: &runs::Model,
+) -> Result<PreflightReport, DbErr> {
+    let execution_parameters = parse_object(
+        "run execution_parameters_json",
+        &run.execution_parameters_json,
+    )?;
+    let mut checks = Vec::new();
+
+    if command.program.trim().is_empty() {
+        checks.push(PreflightCheck::failed(
+            "program configured",
+            "command program is empty",
+        ));
+    } else {
+        checks.push(PreflightCheck::passed(
+            "program configured",
+            format!("program '{}' is configured", command.program),
+        ));
+    }
+
+    let script = script_argument(command);
+    match script {
+        Some(script) => checks.push(PreflightCheck::passed(
+            "script argument configured",
+            format!("script argument '{script}' follows -u"),
+        )),
+        None => checks.push(PreflightCheck::failed(
+            "script argument configured",
+            "command args must include a script argument after -u",
+        )),
+    }
+
+    match &command.current_dir {
+        Some(current_dir) if current_dir.is_dir() => checks.push(PreflightCheck::passed(
+            "working directory",
+            format!("working directory '{}' exists", current_dir.display()),
+        )),
+        Some(current_dir) => checks.push(PreflightCheck::failed(
+            "working directory",
+            format!(
+                "working directory '{}' does not exist or is not a directory",
+                current_dir.display()
+            ),
+        )),
+        None => checks.push(PreflightCheck::warning(
+            "working directory",
+            "no working directory is configured; script resolution may depend on the caller",
+        )),
+    }
+
+    match (script, &command.current_dir) {
+        (Some(script), _) if Path::new(script).is_absolute() => {
+            checks.push(path_exists_check("script file", Path::new(script)));
+        }
+        (Some(script), Some(current_dir)) => {
+            checks.push(path_exists_check("script file", &current_dir.join(script)));
+        }
+        (Some(script), None) => checks.push(PreflightCheck::warning(
+            "script file",
+            format!("relative script '{script}' cannot be resolved without a working directory"),
+        )),
+        (None, _) => checks.push(PreflightCheck::failed(
+            "script file",
+            "script path is unavailable because the -u script argument is missing",
+        )),
+    }
+
+    checks.push(required_directory_check(&execution_parameters, "fasta_dir"));
+    checks.push(required_directory_check(&execution_parameters, "data_dir"));
+    checks.push(output_dir_check(&execution_parameters));
+
+    if optional_bool(&execution_parameters, "use_precomputed_alignments").unwrap_or(false) {
+        checks.push(required_directory_check(
+            &execution_parameters,
+            "alignment_dir",
+        ));
+    }
+
+    Ok(PreflightReport::new(checks))
+}
+
+fn script_argument(command: &CommandSpec) -> Option<&str> {
+    command
+        .args
+        .iter()
+        .position(|arg| arg == "-u")
+        .and_then(|index| command.args.get(index + 1))
+        .map(String::as_str)
+        .filter(|script| !script.is_empty())
+}
+
+fn path_exists_check(name: &str, path: &Path) -> PreflightCheck {
+    if path.exists() {
+        PreflightCheck::passed(name, format!("'{}' exists", path.display()))
+    } else {
+        PreflightCheck::failed(name, format!("'{}' does not exist", path.display()))
+    }
+}
+
+fn required_directory_check(parameters: &Value, field_name: &str) -> PreflightCheck {
+    let Some(path) = optional_string(parameters, field_name).filter(|path| !path.is_empty()) else {
+        return PreflightCheck::failed(field_name, format!("{field_name} is missing"));
+    };
+
+    if Path::new(&path).is_dir() {
+        PreflightCheck::passed(field_name, format!("'{path}' exists and is a directory"))
+    } else {
+        PreflightCheck::failed(
+            field_name,
+            format!("'{path}' does not exist or is not a directory"),
+        )
+    }
+}
+
+fn output_dir_check(parameters: &Value) -> PreflightCheck {
+    let Some(output_dir) =
+        optional_string(parameters, "output_dir").filter(|path| !path.is_empty())
+    else {
+        return PreflightCheck::failed("output_dir parent", "output_dir is missing");
+    };
+
+    let output_path = Path::new(&output_dir);
+    if output_path.exists() {
+        return if output_path.is_dir() {
+            PreflightCheck::passed(
+                "output_dir parent",
+                format!("'{output_dir}' already exists"),
+            )
+        } else {
+            PreflightCheck::failed(
+                "output_dir parent",
+                format!("'{output_dir}' exists but is not a directory"),
+            )
+        };
+    }
+
+    let parent = output_path
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    if parent.is_dir() {
+        PreflightCheck::passed(
+            "output_dir parent",
+            format!("parent '{}' exists", parent.display()),
+        )
+    } else {
+        PreflightCheck::failed(
+            "output_dir parent",
+            format!(
+                "parent '{}' does not exist or is not a directory",
+                parent.display()
+            ),
+        )
+    }
 }
 
 fn validate_entity_consistency(
@@ -366,14 +528,101 @@ fn data_path(data_dir: &str, suffix: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::{
+        env, fs,
+        path::PathBuf,
+        sync::atomic::{AtomicUsize, Ordering},
+    };
+
     use chrono::Utc;
     use serde_json::json;
 
-    use crate::core::entities::{
-        execution_targets, model_backends, model_invocation_profiles, runs,
+    use crate::core::{
+        commands::CommandSpec,
+        entities::{execution_targets, model_backends, model_invocation_profiles, runs},
+        preflight::{PreflightReport, PreflightStatus},
     };
 
-    use super::plan_openfold_command;
+    use super::{plan_openfold_command, preflight_openfold_local};
+
+    static NEXT_TEMP_DIR: AtomicUsize = AtomicUsize::new(0);
+
+    struct TestLayout {
+        root: PathBuf,
+        working_dir: PathBuf,
+        fasta_dir: PathBuf,
+        data_dir: PathBuf,
+        output_dir: PathBuf,
+        alignment_dir: PathBuf,
+    }
+
+    impl TestLayout {
+        fn new() -> Self {
+            let root = env::temp_dir().join(format!(
+                "executor-openfold-preflight-{}-{}",
+                std::process::id(),
+                NEXT_TEMP_DIR.fetch_add(1, Ordering::Relaxed)
+            ));
+            let working_dir = root.join("workspace");
+            let fasta_dir = root.join("fasta");
+            let data_dir = root.join("data");
+            let output_dir = root.join("outputs").join("run");
+            let alignment_dir = root.join("alignments");
+
+            fs::create_dir_all(&working_dir).expect("working directory should be created");
+            fs::create_dir_all(&fasta_dir).expect("fasta directory should be created");
+            fs::create_dir_all(&data_dir).expect("data directory should be created");
+            fs::create_dir_all(output_dir.parent().expect("output directory has a parent"))
+                .expect("output parent should be created");
+            fs::write(working_dir.join("run_openfold.py"), "# test script")
+                .expect("script should be created");
+
+            Self {
+                root,
+                working_dir,
+                fasta_dir,
+                data_dir,
+                output_dir,
+                alignment_dir,
+            }
+        }
+
+        fn command(&self) -> CommandSpec {
+            CommandSpec {
+                program: "python3".into(),
+                args: vec!["-u".into(), "run_openfold.py".into()],
+                current_dir: Some(self.working_dir.clone()),
+                ..Default::default()
+            }
+        }
+
+        fn execution_parameters(&self) -> serde_json::Value {
+            json!({
+                "fasta_dir": self.fasta_dir,
+                "data_dir": self.data_dir,
+                "output_dir": self.output_dir,
+            })
+        }
+    }
+
+    impl Drop for TestLayout {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.root);
+        }
+    }
+
+    fn preflight_run(execution_parameters: serde_json::Value) -> runs::Model {
+        run(json!({}).to_string(), execution_parameters.to_string())
+    }
+
+    fn check_status(report: &PreflightReport, name: &str) -> PreflightStatus {
+        report
+            .checks
+            .iter()
+            .find(|check| check.name == name)
+            .unwrap_or_else(|| panic!("{name} check should be present"))
+            .status
+    }
 
     fn model_backend() -> model_backends::Model {
         model_backends::Model {
@@ -858,6 +1107,182 @@ mod tests {
             error
                 .to_string()
                 .contains("only supports local_subprocess invocation profiles")
+        );
+    }
+
+    #[test]
+    fn preflight_passes_when_local_configuration_is_ready() {
+        let layout = TestLayout::new();
+        let report = preflight_openfold_local(
+            &layout.command(),
+            &preflight_run(layout.execution_parameters()),
+        )
+        .expect("preflight should inspect valid local paths");
+
+        assert!(!report.has_failures());
+        assert_eq!(
+            check_status(&report, "program configured"),
+            PreflightStatus::Passed
+        );
+        assert_eq!(
+            check_status(&report, "script file"),
+            PreflightStatus::Passed
+        );
+        assert_eq!(check_status(&report, "fasta_dir"), PreflightStatus::Passed);
+        assert_eq!(check_status(&report, "data_dir"), PreflightStatus::Passed);
+        assert_eq!(
+            check_status(&report, "output_dir parent"),
+            PreflightStatus::Passed
+        );
+    }
+
+    #[test]
+    fn preflight_warns_when_relative_script_has_no_working_directory() {
+        let layout = TestLayout::new();
+        let mut command = layout.command();
+        command.current_dir = None;
+
+        let report =
+            preflight_openfold_local(&command, &preflight_run(layout.execution_parameters()))
+                .expect("preflight should inspect configured values");
+
+        assert!(!report.has_failures());
+        assert_eq!(
+            check_status(&report, "working directory"),
+            PreflightStatus::Warning
+        );
+        assert_eq!(
+            check_status(&report, "script file"),
+            PreflightStatus::Warning
+        );
+    }
+
+    #[test]
+    fn preflight_fails_when_script_is_missing() {
+        let layout = TestLayout::new();
+        let mut command = layout.command();
+        command.args[1] = "missing_script.py".into();
+
+        let report =
+            preflight_openfold_local(&command, &preflight_run(layout.execution_parameters()))
+                .expect("preflight should inspect configured values");
+
+        assert!(report.has_failures());
+        assert_eq!(
+            check_status(&report, "script file"),
+            PreflightStatus::Failed
+        );
+    }
+
+    #[test]
+    fn preflight_fails_when_fasta_dir_is_missing() {
+        let layout = TestLayout::new();
+        let mut execution = layout.execution_parameters();
+        execution["fasta_dir"] = json!(layout.root.join("missing-fasta"));
+
+        let report = preflight_openfold_local(&layout.command(), &preflight_run(execution))
+            .expect("preflight should inspect configured values");
+
+        assert!(report.has_failures());
+        assert_eq!(check_status(&report, "fasta_dir"), PreflightStatus::Failed);
+    }
+
+    #[test]
+    fn preflight_fails_when_data_dir_is_missing() {
+        let layout = TestLayout::new();
+        let mut execution = layout.execution_parameters();
+        execution["data_dir"] = json!(layout.root.join("missing-data"));
+
+        let report = preflight_openfold_local(&layout.command(), &preflight_run(execution))
+            .expect("preflight should inspect configured values");
+
+        assert!(report.has_failures());
+        assert_eq!(check_status(&report, "data_dir"), PreflightStatus::Failed);
+    }
+
+    #[test]
+    fn preflight_fails_when_output_dir_is_missing() {
+        let layout = TestLayout::new();
+        let mut execution = layout.execution_parameters();
+        execution
+            .as_object_mut()
+            .expect("execution parameters should be an object")
+            .remove("output_dir");
+
+        let report = preflight_openfold_local(&layout.command(), &preflight_run(execution))
+            .expect("preflight should inspect configured values");
+
+        assert!(report.has_failures());
+        assert_eq!(
+            check_status(&report, "output_dir parent"),
+            PreflightStatus::Failed
+        );
+    }
+
+    #[test]
+    fn preflight_fails_when_output_dir_parent_is_missing() {
+        let layout = TestLayout::new();
+        let mut execution = layout.execution_parameters();
+        execution["output_dir"] = json!(layout.root.join("missing-parent").join("output"));
+
+        let report = preflight_openfold_local(&layout.command(), &preflight_run(execution))
+            .expect("preflight should inspect configured values");
+
+        assert!(report.has_failures());
+        assert_eq!(
+            check_status(&report, "output_dir parent"),
+            PreflightStatus::Failed
+        );
+    }
+
+    #[test]
+    fn preflight_fails_when_requested_alignment_dir_is_missing() {
+        let layout = TestLayout::new();
+        let mut execution = layout.execution_parameters();
+        execution["use_precomputed_alignments"] = json!(true);
+
+        let report = preflight_openfold_local(&layout.command(), &preflight_run(execution))
+            .expect("preflight should inspect configured values");
+
+        assert!(report.has_failures());
+        assert_eq!(
+            check_status(&report, "alignment_dir"),
+            PreflightStatus::Failed
+        );
+    }
+
+    #[test]
+    fn preflight_passes_when_requested_alignment_dir_exists() {
+        let layout = TestLayout::new();
+        fs::create_dir_all(&layout.alignment_dir).expect("alignment directory should be created");
+        let mut execution = layout.execution_parameters();
+        execution["use_precomputed_alignments"] = json!(true);
+        execution["alignment_dir"] = json!(layout.alignment_dir);
+
+        let report = preflight_openfold_local(&layout.command(), &preflight_run(execution))
+            .expect("preflight should inspect configured values");
+
+        assert!(!report.has_failures());
+        assert_eq!(
+            check_status(&report, "alignment_dir"),
+            PreflightStatus::Passed
+        );
+    }
+
+    #[test]
+    fn preflight_report_has_failures_tracks_failed_checks() {
+        let layout = TestLayout::new();
+        let mut command = layout.command();
+        command.program.clear();
+
+        let report =
+            preflight_openfold_local(&command, &preflight_run(layout.execution_parameters()))
+                .expect("preflight should inspect configured values");
+
+        assert!(report.has_failures());
+        assert_eq!(
+            check_status(&report, "program configured"),
+            PreflightStatus::Failed
         );
     }
 
