@@ -14,6 +14,7 @@ use serde_json::json;
 async fn main() -> Result<(), sea_orm::DbErr> {
     let now = Utc::now();
     let paths = DemoPaths::from_environment();
+    print_demo_configuration(&paths);
 
     let model_backend = model_backend(now);
     let execution_target = execution_target(now);
@@ -38,6 +39,9 @@ async fn main() -> Result<(), sea_orm::DbErr> {
 struct DemoPaths {
     input_id: String,
     model_device: String,
+    attn_map_dir: String,
+    residue_idx: i64,
+    demo_attn: bool,
     working_dir: String,
     data_dir: String,
     fasta_dir: String,
@@ -48,9 +52,20 @@ struct DemoPaths {
 impl DemoPaths {
     fn from_environment() -> Self {
         let repository_root = repository_root();
+        let input_id = env_or_demo_value("VIZFOLD_OPENFOLD_INPUT_ID", "1UBQ_1");
+        let residue_idx = env_or_demo_i64("VIZFOLD_OPENFOLD_RESIDUE_IDX", 1);
         Self {
-            input_id: env_or_demo_value("VIZFOLD_OPENFOLD_INPUT_ID", "1UBQ_1"),
+            attn_map_dir: env_or_demo_path(
+                "VIZFOLD_OPENFOLD_ATTN_MAP_DIR",
+                repository_root
+                    .join("science-gateway")
+                    .join("openfold-demo-output")
+                    .join(format!("attention_files_{input_id}_demo_tri_{residue_idx}")),
+            ),
+            demo_attn: env_or_demo_bool("VIZFOLD_OPENFOLD_DEMO_ATTN", true),
+            input_id,
             model_device: env_or_demo_value("VIZFOLD_OPENFOLD_MODEL_DEVICE", "cuda:0"),
+            residue_idx,
             working_dir: env_or_demo_path(
                 "VIZFOLD_OPENFOLD_WORKING_DIR",
                 repository_root.as_path(),
@@ -97,6 +112,26 @@ fn env_or_demo_path(name: &str, default: impl Into<PathBuf>) -> String {
 
 fn env_or_demo_value(name: &str, default: &str) -> String {
     env::var(name).unwrap_or_else(|_| default.into())
+}
+
+fn env_or_demo_i64(name: &str, default: i64) -> i64 {
+    match env::var(name) {
+        Ok(value) => value
+            .parse()
+            .unwrap_or_else(|_| panic!("{name} must be an integer")),
+        Err(_) => default,
+    }
+}
+
+fn env_or_demo_bool(name: &str, default: bool) -> bool {
+    match env::var(name) {
+        Ok(value) => match value.to_ascii_lowercase().as_str() {
+            "true" | "1" => true,
+            "false" | "0" => false,
+            _ => panic!("{name} must be true, false, 1, or 0"),
+        },
+        Err(_) => default,
+    }
 }
 
 fn model_backend(now: chrono::DateTime<Utc>) -> model_backends::Model {
@@ -233,6 +268,7 @@ fn run(now: chrono::DateTime<Utc>, paths: &DemoPaths) -> runs::Model {
             "config_preset": "model_1_ptm",
             "save_outputs": true,
             "num_recycles_save": 1,
+            "demo_attn": paths.demo_attn,
         })
         .to_string(),
         // Reuse requires an existing `<alignment_dir>/<input_id>` directory.
@@ -241,6 +277,8 @@ fn run(now: chrono::DateTime<Utc>, paths: &DemoPaths) -> runs::Model {
             "data_dir": paths.data_dir,
             "output_dir": paths.output_dir,
             "alignment_dir": paths.alignment_dir,
+            "attn_map_dir": paths.attn_map_dir,
+            "residue_idx": paths.residue_idx,
             "use_precomputed_alignments": true,
             "model_device": paths.model_device,
             "cpus": 1,
@@ -251,6 +289,15 @@ fn run(now: chrono::DateTime<Utc>, paths: &DemoPaths) -> runs::Model {
         completed_at: None,
         error_message: None,
     }
+}
+
+fn print_demo_configuration(paths: &DemoPaths) {
+    println!("== Demo configuration ==");
+    println!("input_id: {}", paths.input_id);
+    println!("model_device: {}", paths.model_device);
+    println!("attn_map_dir: {}", paths.attn_map_dir);
+    println!("residue_idx: {}", paths.residue_idx);
+    println!("demo_attn: {}", paths.demo_attn);
 }
 
 fn print_command(command: &executor::core::commands::CommandSpec) {
