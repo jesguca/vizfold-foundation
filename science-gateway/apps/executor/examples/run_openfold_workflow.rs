@@ -52,7 +52,7 @@ struct DemoPaths {
 impl DemoPaths {
     fn from_environment() -> Self {
         let repository_root = repository_root();
-        let input_id = env_or_demo_value("VIZFOLD_OPENFOLD_INPUT_ID", "1UBQ_1");
+        let input_id = env_or_demo_value("VIZFOLD_OPENFOLD_INPUT_ID", "6KWC_1");
         let residue_idx = env_or_demo_i64("VIZFOLD_OPENFOLD_RESIDUE_IDX", 1);
         Self {
             attn_map_dir: env_or_demo_path(
@@ -79,7 +79,7 @@ impl DemoPaths {
                 repository_root
                     .join("examples")
                     .join("monomer")
-                    .join("fasta_dir_1UBQ"),
+                    .join("fasta_dir_6KWC"),
             ),
             output_dir: env_or_demo_path(
                 "VIZFOLD_OPENFOLD_OUTPUT_DIR",
