@@ -6,7 +6,7 @@ pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i32,
     pub run_id: i32,
-    pub artifact_type: String,
+    pub artifact_type_id: i32,
     pub format: String,
     pub storage_uri: String,
     pub metadata_json: String,
@@ -23,11 +23,25 @@ pub enum Relation {
         on_delete = "Cascade"
     )]
     Run,
+    #[sea_orm(
+        belongs_to = "super::artifact_types::Entity",
+        from = "Column::ArtifactTypeId",
+        to = "super::artifact_types::Column::Id",
+        on_update = "Cascade",
+        on_delete = "Restrict"
+    )]
+    ArtifactType,
 }
 
 impl Related<super::runs::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Run.def()
+    }
+}
+
+impl Related<super::artifact_types::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::ArtifactType.def()
     }
 }
 

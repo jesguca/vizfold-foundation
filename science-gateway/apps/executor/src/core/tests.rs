@@ -4,8 +4,9 @@ use sea_orm::{ConnectionTrait, Database, DatabaseConnection, DbErr, Statement};
 use serde_json::json;
 
 use crate::core::{
-    db,
+    db, seed,
     services::{
+        artifact_types::{self, RegisterArtifactTypeInput},
         artifacts::{self, RecordArtifactInput},
         execution_targets::{self, RegisterExecutionTargetInput},
         model_backends::{self, RegisterModelBackendInput},
@@ -44,6 +45,35 @@ fn sample_model_backend_input() -> RegisterModelBackendInput {
         })
         .to_string(),
     }
+}
+
+fn sample_artifact_type_input() -> RegisterArtifactTypeInput {
+    RegisterArtifactTypeInput {
+        slug: "protein_structure".into(),
+        label: "Protein structure".into(),
+        default_format: "pdb".into(),
+        display_mode: "embedded".into(),
+        viewer_kind: "ngl_viewer".into(),
+        description: "Test protein structure type".into(),
+        metadata_schema_json: json!({}).to_string(),
+    }
+}
+
+#[tokio::test]
+async fn seeds_artifact_type_catalog() -> Result<(), DbErr> {
+    let db = test_db().await?;
+
+    seed::seed_defaults(&db).await?;
+    seed::seed_defaults(&db).await?;
+
+    let artifact_types = artifact_types::list_artifact_types(&db).await?;
+    assert_eq!(artifact_types.len(), 11);
+    let protein_structure = artifact_types::get_artifact_type_by_slug(&db, "protein_structure")
+        .await?
+        .expect("protein structure type should be seeded");
+    assert_eq!(protein_structure.default_format, "pdb");
+    assert_eq!(protein_structure.viewer_kind, "ngl_viewer");
+    Ok(())
 }
 
 fn sample_execution_target_input() -> RegisterExecutionTargetInput {
@@ -328,6 +358,8 @@ async fn rejects_non_object_json_parameters() -> Result<(), DbErr> {
 #[tokio::test]
 async fn records_artifact_manifest_entry() -> Result<(), DbErr> {
     let db = test_db().await?;
+    let artifact_type =
+        artifact_types::register_artifact_type(&db, sample_artifact_type_input()).await?;
     let backend = model_backends::register_model_backend(&db, sample_model_backend_input()).await?;
     let target =
         execution_targets::register_execution_target(&db, sample_execution_target_input()).await?;
@@ -355,7 +387,7 @@ async fn records_artifact_manifest_entry() -> Result<(), DbErr> {
         &db,
         RecordArtifactInput {
             run_id: run.id,
-            artifact_type: "structure".into(),
+            artifact_type_id: artifact_type.id,
             format: "pdb".into(),
             storage_uri: "file:///tmp/run-1/model.pdb".into(),
             metadata_json: json!({"bytes": 1280, "sha256": "abc123"}).to_string(),
@@ -364,6 +396,7 @@ async fn records_artifact_manifest_entry() -> Result<(), DbErr> {
     .await?;
 
     assert_eq!(artifact.storage_uri, "file:///tmp/run-1/model.pdb");
+    assert_eq!(artifact.artifact_type_id, artifact_type.id);
     assert!(artifact.metadata_json.contains("sha256"));
     Ok(())
 }
@@ -371,6 +404,8 @@ async fn records_artifact_manifest_entry() -> Result<(), DbErr> {
 #[tokio::test]
 async fn retrieves_run_with_artifacts() -> Result<(), DbErr> {
     let db = test_db().await?;
+    let artifact_type =
+        artifact_types::register_artifact_type(&db, sample_artifact_type_input()).await?;
     let backend = model_backends::register_model_backend(&db, sample_model_backend_input()).await?;
     let target =
         execution_targets::register_execution_target(&db, sample_execution_target_input()).await?;
@@ -398,7 +433,7 @@ async fn retrieves_run_with_artifacts() -> Result<(), DbErr> {
         &db,
         RecordArtifactInput {
             run_id: run.id,
-            artifact_type: "logs".into(),
+            artifact_type_id: artifact_type.id,
             format: "txt".into(),
             storage_uri: "file:///tmp/run-1/stdout.log".into(),
             metadata_json: json!({"line_count": 42}).to_string(),
@@ -412,12 +447,15 @@ async fn retrieves_run_with_artifacts() -> Result<(), DbErr> {
 
     assert_eq!(hydrated.run.id, run.id);
     assert_eq!(hydrated.artifacts.len(), 1);
+    assert_eq!(hydrated.artifacts[0].artifact_type_id, artifact_type.id);
     Ok(())
 }
 
 #[tokio::test]
 async fn artifact_manifest_stores_uri_and_metadata_only() -> Result<(), DbErr> {
     let db = test_db().await?;
+    let artifact_type =
+        artifact_types::register_artifact_type(&db, sample_artifact_type_input()).await?;
     let backend = model_backends::register_model_backend(&db, sample_model_backend_input()).await?;
     let target =
         execution_targets::register_execution_target(&db, sample_execution_target_input()).await?;
@@ -445,7 +483,7 @@ async fn artifact_manifest_stores_uri_and_metadata_only() -> Result<(), DbErr> {
         &db,
         RecordArtifactInput {
             run_id: run.id,
-            artifact_type: "confidence_metrics".into(),
+            artifact_type_id: artifact_type.id,
             format: "json".into(),
             storage_uri: "s3://vizfold/runs/1/confidence.json".into(),
             metadata_json: json!({"bytes": 256, "content_type": "application/json"}).to_string(),

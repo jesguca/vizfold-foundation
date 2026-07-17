@@ -20,7 +20,7 @@ pub async fn create(
 ) -> Result<artifacts::Model, DbErr> {
     artifacts::ActiveModel {
         run_id: Set(input.run_id),
-        artifact_type: Set(input.artifact_type),
+        artifact_type_id: Set(input.artifact_type_id),
         format: Set(input.format),
         storage_uri: Set(input.storage_uri),
         metadata_json: Set(input.metadata_json),

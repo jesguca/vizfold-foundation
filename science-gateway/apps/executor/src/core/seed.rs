@@ -1,11 +1,123 @@
 use sea_orm::{ColumnTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter};
 
 use crate::core::{
-    entities::{execution_targets, model_backends, model_invocation_profiles},
+    entities::{artifact_types, execution_targets, model_backends, model_invocation_profiles},
     services,
 };
 
 pub async fn seed_defaults(db: &DatabaseConnection) -> Result<(), DbErr> {
+    for (slug, label, default_format, display_mode, viewer_kind, description) in [
+        (
+            "arc_diagram",
+            "Arc diagram",
+            "png",
+            "native",
+            "image",
+            "Static arc diagram image.",
+        ),
+        (
+            "attention_heatmap",
+            "Attention heatmap",
+            "png",
+            "native",
+            "image",
+            "Static attention heatmap image.",
+        ),
+        (
+            "combined_3d_arc_panel",
+            "Combined 3D and arc panel",
+            "png",
+            "native",
+            "image",
+            "Static combined visualization panel.",
+        ),
+        (
+            "pymol_overlay_render",
+            "PyMOL 3D overlay render",
+            "png",
+            "native",
+            "image",
+            "Static PyMOL-rendered overlay image.",
+        ),
+        (
+            "protein_structure",
+            "Protein structure",
+            "pdb",
+            "embedded",
+            "ngl_viewer",
+            "Protein structure file suitable for browser-based 3D viewing.",
+        ),
+        (
+            "pymol_session",
+            "PyMOL session",
+            "pse",
+            "download",
+            "download_link",
+            "PyMOL session file for local use.",
+        ),
+        (
+            "attention_trace_text",
+            "Attention trace text",
+            "txt",
+            "download",
+            "download_link",
+            "Raw attention trace text output.",
+        ),
+        (
+            "activation_arrays",
+            "Activation arrays",
+            "npz",
+            "download",
+            "download_link",
+            "NumPy activation arrays.",
+        ),
+        (
+            "trace_archive",
+            "Trace archive",
+            "zip",
+            "download",
+            "download_link",
+            "Full run trace archive.",
+        ),
+        (
+            "manifest",
+            "Manifest",
+            "json",
+            "internal",
+            "viewer_registry",
+            "Internal manifest used to describe produced artifacts.",
+        ),
+        (
+            "streamlit_app",
+            "Streamlit app",
+            "url",
+            "embedded",
+            "iframe",
+            "Optional live Streamlit app URL when available.",
+        ),
+    ] {
+        if artifact_types::Entity::find()
+            .filter(artifact_types::Column::Slug.eq(slug))
+            .one(db)
+            .await?
+            .is_none()
+        {
+            services::artifact_types::register_artifact_type(
+                db,
+                services::artifact_types::RegisterArtifactTypeInput {
+                    slug: slug.into(),
+                    label: label.into(),
+                    default_format: default_format.into(),
+                    display_mode: display_mode.into(),
+                    viewer_kind: viewer_kind.into(),
+                    description: description.into(),
+                    metadata_schema_json: "{}".into(),
+                },
+            )
+            .await?;
+        }
+    }
+
     if model_backends::Entity::find()
         .filter(model_backends::Column::Slug.eq("openfold"))
         .one(db)
