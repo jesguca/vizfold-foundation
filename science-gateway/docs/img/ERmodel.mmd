@@ -51,10 +51,23 @@ erDiagram
         string error_message
     }
 
+    ARTIFACT_TYPE {
+        string id
+        string slug
+        string label
+        string default_format
+        string display_mode
+        string viewer_kind
+        string description
+        json metadata_schema
+        datetime created_at
+        datetime updated_at
+    }
+
     ARTIFACT {
         string id
         string run_id
-        string artifact_type
+        string artifact_type_id
         string format
         string storage_uri
         json metadata
@@ -69,3 +82,4 @@ erDiagram
     EXECUTION_TARGET ||--o{ MODEL_INVOCATION_PROFILE : "supports_invocation"
 
     RUN ||--o{ ARTIFACT : "produces"
+    ARTIFACT_TYPE ||--o{ ARTIFACT : "classifies"

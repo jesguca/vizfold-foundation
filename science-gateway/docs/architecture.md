@@ -6,7 +6,7 @@
 
 ![Science Gateway Metadata Model](img/ERModel.png)
 
-This diagram describes the MVP data model for the Rust executor core. The goal is to separate model definition, execution environment, invocation configuration, concrete runs, and produced artifacts.
+This diagram describes the MVP data model for the Rust executor core. The goal is to separate model definition, execution environment, invocation configuration, concrete runs, artifact classification, and produced artifact instances.
 
 `MODEL_BACKEND` represents a registered model implementation, such as OpenFold, ESMFold, or Boltz. It stores model-level metadata, the model parameter schema, and the artifact types the model can theoretically produce.
 
@@ -16,9 +16,13 @@ This diagram describes the MVP data model for the Rust executor core. The goal i
 
 `RUN` represents one concrete execution request. It selects a model backend, execution target, and invocation profile, then stores the selected model and execution parameters for that specific run. `RUN.input_id` is the stable model-facing input identity for the run. For OpenFold, this is intended to become the canonical FASTA record ID/header tag, default alignment key, and artifact filename prefix. It should not be mutated for workspace/output collision handling; use run/workspace identifiers for that instead.
 
-`ARTIFACT` represents a manifest entry for an output produced by a run. The database records what artifact exists and where it is stored, while the heavy scientific output files remain in external storage such as the filesystem, HPC storage, or object storage.
+`ARTIFACT_TYPE` represents catalog/reference data for known artifact kinds that the executor or visualization layer may understand, such as protein structures, attention heatmaps, PyMOL sessions, trace archives, or manifests. It stores stable type metadata including a slug, default format, display mode, viewer kind, description, and optional metadata schema. This separates artifact classification and visualization hints from concrete produced artifact instances.
 
-This model intentionally does not include model-target artifact constraint logic in the MVP. Artifact capabilities remain model-level, and actual produced outputs are recorded through the artifact manifest.
+`ARTIFACT` represents a manifest entry for a concrete output produced by a run. It references an `ARTIFACT_TYPE`, records the concrete produced format, storage URI, and artifact metadata. The database records what artifact exists and where it is stored, while the heavy scientific output files remain in external storage such as the filesystem, HPC storage, or object storage.
+
+This model intentionally does not include model-target artifact constraint logic in the MVP. Artifact capabilities remain model-level, while actual produced outputs are recorded as `ARTIFACT` rows classified by the `ARTIFACT_TYPE` catalog.
+
+The artifact type catalog exists to provide stable artifact metadata and display hints. Actual post-run artifact discovery, output scanning, file serving, and dashboard/viewer wiring are intentionally deferred.
 
 ## Architecture note: parameter schema ownership
 
@@ -61,7 +65,7 @@ Before execution, the command may pass through an optional `PreflightRunner`. A 
 
 The `ExecutionWorkflow` coordinates this flow: `CommandSpec` → optional `PreflightRunner` → `CommandRunner`. The `CommandRunner` executes the command and returns a `CommandOutput` containing the exit code, stdout, and stderr.
 
-For the MVP, OpenFold can be supported through a built-in Rust planner and an optional OpenFold preflight runner. Later, the same abstractions can support DB-driven command templates, external model plugins, richer preflight checks, and additional execution targets without changing the core execution flow. Produced outputs are not stored directly in the database; they remain in external storage and are registered as `ARTIFACT` manifest entries.
+For the MVP, OpenFold can be supported through a built-in Rust planner and an optional OpenFold preflight runner. Later, the same abstractions can support DB-driven command templates, external model plugins, richer preflight checks, and additional execution targets without changing the core execution flow. Produced outputs are not stored directly in the database; they remain in external storage and are registered as `ARTIFACT` manifest entries classified by the `ARTIFACT_TYPE` catalog. `ARTIFACT_TYPE` is catalog/reference data. `ARTIFACT` is run-specific manifest data.
 
 ### Output location resolution
 
