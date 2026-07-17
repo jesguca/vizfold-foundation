@@ -37,6 +37,7 @@ async fn main() -> Result<(), sea_orm::DbErr> {
 }
 
 struct DemoPaths {
+    demo_run_id: String,
     input_id: String,
     model_device: String,
     attn_map_dir: String,
@@ -54,15 +55,22 @@ impl DemoPaths {
         let repository_root = repository_root();
         let input_id = env_or_demo_value("VIZFOLD_OPENFOLD_INPUT_ID", "6KWC_1");
         let residue_idx = env_or_demo_i64("VIZFOLD_OPENFOLD_RESIDUE_IDX", 1);
+        let demo_run_id = env_or_demo_value("VIZFOLD_OPENFOLD_DEMO_RUN_ID", "openfold-demo-run");
+        let output_dir = env_or_demo_path(
+            "VIZFOLD_OPENFOLD_OUTPUT_DIR",
+            repository_root
+                .join("science-gateway")
+                .join("openfold-demo-output")
+                .join(&demo_run_id),
+        );
         Self {
             attn_map_dir: env_or_demo_path(
                 "VIZFOLD_OPENFOLD_ATTN_MAP_DIR",
-                repository_root
-                    .join("science-gateway")
-                    .join("openfold-demo-output")
+                PathBuf::from(&output_dir)
                     .join(format!("attention_files_{input_id}_demo_tri_{residue_idx}")),
             ),
             demo_attn: env_or_demo_bool("VIZFOLD_OPENFOLD_DEMO_ATTN", true),
+            demo_run_id,
             input_id,
             model_device: env_or_demo_value("VIZFOLD_OPENFOLD_MODEL_DEVICE", "cuda:0"),
             residue_idx,
@@ -81,12 +89,7 @@ impl DemoPaths {
                     .join("monomer")
                     .join("fasta_dir_6KWC"),
             ),
-            output_dir: env_or_demo_path(
-                "VIZFOLD_OPENFOLD_OUTPUT_DIR",
-                repository_root
-                    .join("science-gateway")
-                    .join("openfold-demo-output"),
-            ),
+            output_dir,
             alignment_dir: env_or_demo_path(
                 "VIZFOLD_OPENFOLD_ALIGNMENT_DIR",
                 repository_root
@@ -295,8 +298,10 @@ fn print_demo_configuration(paths: &DemoPaths) {
     println!("== Demo configuration ==");
     println!("input_id: {}", paths.input_id);
     println!("model_device: {}", paths.model_device);
+    println!("demo_run_id: {}", paths.demo_run_id);
+    println!("output_dir: {}", paths.output_dir);
     println!("attn_map_dir: {}", paths.attn_map_dir);
-    println!("residue_idx: {}", paths.residue_idx);
+    println!("triangle_residue_idx: {}", paths.residue_idx);
     println!("demo_attn: {}", paths.demo_attn);
 }
 

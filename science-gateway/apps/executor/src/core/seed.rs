@@ -95,6 +95,22 @@ pub async fn seed_defaults(db: &DatabaseConnection) -> Result<(), DbErr> {
             "iframe",
             "Optional live Streamlit app URL when available.",
         ),
+        (
+            "run_output_directory",
+            "Run output directory",
+            "directory",
+            "download",
+            "directory_link",
+            "Directory containing outputs produced by a run.",
+        ),
+        (
+            "attention_output_directory",
+            "Attention output directory",
+            "directory",
+            "download",
+            "directory_link",
+            "Directory containing attention-map outputs produced by a run.",
+        ),
     ] {
         if artifact_types::Entity::find()
             .filter(artifact_types::Column::Slug.eq(slug))

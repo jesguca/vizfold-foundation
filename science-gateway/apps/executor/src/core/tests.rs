@@ -67,7 +67,7 @@ async fn seeds_artifact_type_catalog() -> Result<(), DbErr> {
     seed::seed_defaults(&db).await?;
 
     let artifact_types = artifact_types::list_artifact_types(&db).await?;
-    assert_eq!(artifact_types.len(), 11);
+    assert_eq!(artifact_types.len(), 13);
     let protein_structure = artifact_types::get_artifact_type_by_slug(&db, "protein_structure")
         .await?
         .expect("protein structure type should be seeded");
