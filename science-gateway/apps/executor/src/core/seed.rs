@@ -178,6 +178,55 @@ pub async fn seed_defaults(db: &DatabaseConnection) -> Result<(), DbErr> {
         .await?;
     }
 
+    let (backend, target) = seeded_backend_and_target(db).await?;
+
+    if openfold_profile(db, &backend, &target).await?.is_none() {
+        // Default matches the install root this repo's own Dockerfile builds.
+        let openfold_home =
+            std::env::var("VIZFOLD_OPENFOLD_HOME").unwrap_or_else(|_| "/opt/openfold".into());
+        services::model_invocation_profiles::register_model_invocation_profile(
+            db,
+            services::model_invocation_profiles::RegisterModelInvocationProfileInput {
+                model_backend_id: backend.id,
+                execution_target_id: target.id,
+                invocation_kind: "local_subprocess".into(),
+                config_json: serde_json::json!({
+                    "program": "python3",
+                    "script": "run_pretrained_openfold.py",
+                    "working_dir": &openfold_home,
+                    "env": { "PYTHONPATH": &openfold_home },
+                    "output_location": format!("{openfold_home}/outputs"),
+                })
+                .to_string(),
+            },
+        )
+        .await?;
+    }
+
+    Ok(())
+}
+
+pub async fn seeded_openfold(
+    db: &DatabaseConnection,
+) -> Result<
+    (
+        model_backends::Model,
+        execution_targets::Model,
+        model_invocation_profiles::Model,
+    ),
+    DbErr,
+> {
+    let (backend, target) = seeded_backend_and_target(db).await?;
+    let profile = openfold_profile(db, &backend, &target)
+        .await?
+        .ok_or_else(|| DbErr::Custom("seeded OpenFold invocation profile is missing".into()))?;
+
+    Ok((backend, target, profile))
+}
+
+async fn seeded_backend_and_target(
+    db: &DatabaseConnection,
+) -> Result<(model_backends::Model, execution_targets::Model), DbErr> {
     let backend = model_backends::Entity::find()
         .filter(model_backends::Column::Slug.eq("openfold"))
         .one(db)
@@ -189,26 +238,17 @@ pub async fn seed_defaults(db: &DatabaseConnection) -> Result<(), DbErr> {
         .await?
         .ok_or_else(|| DbErr::Custom("seeded local mock execution target is missing".into()))?;
 
-    if model_invocation_profiles::Entity::find()
+    Ok((backend, target))
+}
+
+async fn openfold_profile(
+    db: &DatabaseConnection,
+    backend: &model_backends::Model,
+    target: &execution_targets::Model,
+) -> Result<Option<model_invocation_profiles::Model>, DbErr> {
+    model_invocation_profiles::Entity::find()
         .filter(model_invocation_profiles::Column::ModelBackendId.eq(backend.id))
         .filter(model_invocation_profiles::Column::ExecutionTargetId.eq(target.id))
         .one(db)
-        .await?
-        .is_none()
-    {
-        services::model_invocation_profiles::register_model_invocation_profile(
-            db,
-            services::model_invocation_profiles::RegisterModelInvocationProfileInput {
-                model_backend_id: backend.id,
-                execution_target_id: target.id,
-                invocation_kind: "mock".into(),
-                config_json:
-                    r#"{"mode":"local_mock","output_location":"science-gateway/mock-output"}"#
-                        .into(),
-            },
-        )
-        .await?;
-    }
-
-    Ok(())
+        .await
 }

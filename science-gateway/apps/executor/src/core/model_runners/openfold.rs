@@ -311,7 +311,7 @@ fn fasta_input_check(parameters: &Value, input_id: &str) -> PreflightCheck {
     )
 }
 
-fn fasta_files_in_directory(fasta_dir: &Path) -> Result<Vec<PathBuf>, std::io::Error> {
+pub fn fasta_files_in_directory(fasta_dir: &Path) -> Result<Vec<PathBuf>, std::io::Error> {
     let mut fasta_files = std::fs::read_dir(fasta_dir)?
         .filter_map(Result::ok)
         .map(|entry| entry.path())
