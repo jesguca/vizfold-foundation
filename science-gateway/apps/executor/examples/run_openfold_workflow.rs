@@ -27,6 +27,7 @@ async fn main() -> Result<(), sea_orm::DbErr> {
 
     let preflight_runner = OpenFoldPreflightRunner {
         command: &command,
+        invocation_profile: &invocation_profile,
         run: &run,
     };
     let workflow_result =

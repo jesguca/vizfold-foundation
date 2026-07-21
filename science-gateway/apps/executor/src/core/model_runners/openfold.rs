@@ -9,6 +9,7 @@ use serde_json::Value;
 use crate::core::{
     commands::CommandSpec,
     entities::{execution_targets, model_backends, model_invocation_profiles, runs},
+    output_locations::resolve_output_location,
     preflight::{PreflightCheck, PreflightReport, PreflightRunner},
 };
 
@@ -46,8 +47,8 @@ pub fn plan_openfold_command(
     let script = required_string(&config, "script")?;
     let current_dir = optional_string(&config, "working_dir").map(PathBuf::from);
     let env = parse_env(&config)?;
-
-    let output_dir = required_string(&execution_parameters, "output_dir")?;
+    let output_dir = resolve_output_location(invocation_profile, run)?;
+    let attention_dir = output_dir.join("attention");
 
     let mut args = vec!["-u".into(), script];
 
@@ -58,12 +59,15 @@ pub fn plan_openfold_command(
         &execution_parameters,
     )?;
 
-    args.extend(["--output_dir".into(), output_dir]);
+    args.extend([
+        "--output_dir".into(),
+        output_dir.to_string_lossy().into_owned(),
+    ]);
     append_available_resources_args(&mut args, &available_resources, &execution_parameters);
-
-    if let Some(attn_map_dir) = optional_string(&execution_parameters, "attn_map_dir") {
-        args.extend(["--attn_map_dir".into(), attn_map_dir]);
-    }
+    args.extend([
+        "--attn_map_dir".into(),
+        attention_dir.to_string_lossy().into_owned(),
+    ]);
 
     if let Some(residue_idx) = optional_i64(&execution_parameters, "residue_idx") {
         args.extend(["--triangle_residue_idx".into(), residue_idx.to_string()]);
@@ -90,6 +94,7 @@ pub fn plan_openfold_command(
 
 pub fn preflight_openfold(
     command: &CommandSpec,
+    invocation_profile: &model_invocation_profiles::Model,
     run: &runs::Model,
 ) -> Result<PreflightReport, DbErr> {
     let execution_parameters = parse_object(
@@ -160,7 +165,8 @@ pub fn preflight_openfold(
     checks.push(input_id_check(&run.input_id));
     checks.push(fasta_input_check(&execution_parameters, &run.input_id));
     checks.push(required_directory_check(&execution_parameters, "data_dir"));
-    checks.push(output_dir_check(&execution_parameters));
+    let output_dir = resolve_output_location(invocation_profile, run)?;
+    checks.push(output_dir_check(&output_dir));
 
     if optional_bool(&execution_parameters, "use_precomputed_alignments").unwrap_or(false) {
         checks.push(required_directory_check(
@@ -178,12 +184,13 @@ pub fn preflight_openfold(
 
 pub struct OpenFoldPreflightRunner<'a> {
     pub command: &'a CommandSpec,
+    pub invocation_profile: &'a model_invocation_profiles::Model,
     pub run: &'a runs::Model,
 }
 
 impl PreflightRunner for OpenFoldPreflightRunner<'_> {
     fn run_preflight(&self) -> Result<PreflightReport, DbErr> {
-        preflight_openfold(self.command, self.run)
+        preflight_openfold(self.command, self.invocation_profile, self.run)
     }
 }
 
@@ -391,24 +398,17 @@ fn precomputed_alignment_key_check(parameters: &Value, input_id: &str) -> Prefli
     }
 }
 
-fn output_dir_check(parameters: &Value) -> PreflightCheck {
-    let Some(output_dir) =
-        optional_string(parameters, "output_dir").filter(|path| !path.is_empty())
-    else {
-        return PreflightCheck::failed("output_dir parent", "output_dir is missing");
-    };
-
-    let output_path = Path::new(&output_dir);
+fn output_dir_check(output_path: &Path) -> PreflightCheck {
     if output_path.exists() {
         return if output_path.is_dir() {
             PreflightCheck::passed(
                 "output_dir parent",
-                format!("'{output_dir}' already exists"),
+                format!("'{}' already exists", output_path.display()),
             )
         } else {
             PreflightCheck::failed(
                 "output_dir parent",
-                format!("'{output_dir}' exists but is not a directory"),
+                format!("'{}' exists but is not a directory", output_path.display()),
             )
         };
     }
@@ -725,6 +725,7 @@ mod tests {
     };
 
     use chrono::Utc;
+    use sea_orm::DbErr;
     use serde_json::json;
 
     use crate::core::{
@@ -733,7 +734,10 @@ mod tests {
         preflight::{PreflightReport, PreflightRunner, PreflightStatus},
     };
 
-    use super::{OpenFoldPreflightRunner, plan_openfold_command, preflight_openfold};
+    use super::{
+        OpenFoldPreflightRunner, plan_openfold_command,
+        preflight_openfold as preflight_openfold_impl,
+    };
 
     static NEXT_TEMP_DIR: AtomicUsize = AtomicUsize::new(0);
 
@@ -742,7 +746,6 @@ mod tests {
         working_dir: PathBuf,
         fasta_dir: PathBuf,
         data_dir: PathBuf,
-        output_dir: PathBuf,
         alignment_dir: PathBuf,
     }
 
@@ -756,14 +759,13 @@ mod tests {
             let working_dir = root.join("workspace");
             let fasta_dir = root.join("fasta");
             let data_dir = root.join("data");
-            let output_dir = root.join("outputs").join("run");
+            let output_location = root.join("outputs");
             let alignment_dir = root.join("alignments");
 
             fs::create_dir_all(&working_dir).expect("working directory should be created");
             fs::create_dir_all(&fasta_dir).expect("fasta directory should be created");
             fs::create_dir_all(&data_dir).expect("data directory should be created");
-            fs::create_dir_all(output_dir.parent().expect("output directory has a parent"))
-                .expect("output parent should be created");
+            fs::create_dir_all(&output_location).expect("output location should be created");
             fs::write(working_dir.join("run_openfold.py"), "# test script")
                 .expect("script should be created");
             fs::write(
@@ -777,7 +779,6 @@ mod tests {
                 working_dir,
                 fasta_dir,
                 data_dir,
-                output_dir,
                 alignment_dir,
             }
         }
@@ -795,7 +796,6 @@ mod tests {
             json!({
                 "fasta_dir": self.fasta_dir,
                 "data_dir": self.data_dir,
-                "output_dir": self.output_dir,
             })
         }
     }
@@ -817,6 +817,18 @@ mod tests {
         let mut run = run(json!({}).to_string(), execution_parameters.to_string());
         run.input_id = input_id.into();
         run
+    }
+
+    fn preflight_invocation_profile() -> model_invocation_profiles::Model {
+        invocation_profile(json!({"output_location": env::temp_dir()}).to_string())
+    }
+
+    fn preflight_openfold(
+        command: &CommandSpec,
+        run: &runs::Model,
+    ) -> Result<PreflightReport, DbErr> {
+        let invocation_profile = preflight_invocation_profile();
+        preflight_openfold_impl(command, &invocation_profile, run)
     }
 
     fn check_status(report: &PreflightReport, name: &str) -> PreflightStatus {
@@ -900,6 +912,7 @@ mod tests {
         json!({
             "program": "python3",
             "script": "run_pretrained_openfold.py",
+            "output_location": "/tmp/outputs",
             "working_dir": "/repo",
             "env": {
                 "PYTHONPATH": "/repo"
@@ -1024,7 +1037,17 @@ mod tests {
         assert_eq!(command.args[2], "/tmp/fasta");
         assert_eq!(command.args[3], "/data/pdb_mmcif/mmcif_files");
         assert!(command.args.contains(&"--output_dir".into()));
-        assert!(command.args.contains(&"/tmp/output".into()));
+        let output_dir = PathBuf::from("/tmp/outputs").join("4");
+        assert!(
+            command
+                .args
+                .contains(&output_dir.to_string_lossy().into_owned())
+        );
+        assert_pair(
+            &command.args,
+            "--attn_map_dir",
+            &output_dir.join("attention").to_string_lossy(),
+        );
         assert!(command.args.contains(&"--config_preset".into()));
         assert!(command.args.contains(&"model_1_ptm".into()));
         assert!(command.args.contains(&"--model_device".into()));
@@ -1167,9 +1190,8 @@ mod tests {
     }
 
     #[test]
-    fn includes_attention_demo_flags_when_enabled() {
+    fn derives_attention_map_directory_from_resolved_output_location() {
         let mut execution = execution_parameters();
-        execution["attn_map_dir"] = json!("/tmp/attn");
         execution["residue_idx"] = json!(7);
 
         let command = plan_openfold_command(
@@ -1183,8 +1205,14 @@ mod tests {
         )
         .expect("command should plan");
 
-        assert!(command.args.contains(&"--attn_map_dir".into()));
-        assert!(command.args.contains(&"/tmp/attn".into()));
+        assert_pair(
+            &command.args,
+            "--attn_map_dir",
+            &PathBuf::from("/tmp/outputs")
+                .join("4")
+                .join("attention")
+                .to_string_lossy(),
+        );
         assert!(command.args.contains(&"--triangle_residue_idx".into()));
         assert!(command.args.contains(&"7".into()));
         assert!(command.args.contains(&"--demo_attn".into()));
@@ -1509,16 +1537,33 @@ mod tests {
     }
 
     #[test]
-    fn preflight_fails_when_output_dir_is_missing() {
+    fn preflight_does_not_require_output_dir_in_execution_parameters() {
         let layout = TestLayout::new();
-        let mut execution = layout.execution_parameters();
-        execution
-            .as_object_mut()
-            .expect("execution parameters should be an object")
-            .remove("output_dir");
+        let report = preflight_openfold(
+            &layout.command(),
+            &preflight_run(layout.execution_parameters()),
+        )
+        .expect("preflight should inspect configured values");
 
-        let report = preflight_openfold(&layout.command(), &preflight_run(execution))
-            .expect("preflight should inspect configured values");
+        assert_eq!(
+            check_status(&report, "output_dir parent"),
+            PreflightStatus::Passed
+        );
+    }
+
+    #[test]
+    fn preflight_fails_when_resolved_output_dir_parent_is_missing() {
+        let layout = TestLayout::new();
+        let profile = invocation_profile(
+            json!({"output_location": layout.root.join("missing-parent")}).to_string(),
+        );
+
+        let report = preflight_openfold_impl(
+            &layout.command(),
+            &profile,
+            &preflight_run(layout.execution_parameters()),
+        )
+        .expect("preflight should inspect configured values");
 
         assert!(report.has_failures());
         assert_eq!(
@@ -1528,18 +1573,32 @@ mod tests {
     }
 
     #[test]
-    fn preflight_fails_when_output_dir_parent_is_missing() {
+    fn preflight_returns_clear_error_for_missing_output_location() {
         let layout = TestLayout::new();
-        let mut execution = layout.execution_parameters();
-        execution["output_dir"] = json!(layout.root.join("missing-parent").join("output"));
+        let error = preflight_openfold_impl(
+            &layout.command(),
+            &invocation_profile("{}".into()),
+            &preflight_run(layout.execution_parameters()),
+        )
+        .expect_err("missing output location should fail preflight");
 
-        let report = preflight_openfold(&layout.command(), &preflight_run(execution))
-            .expect("preflight should inspect configured values");
+        assert!(error.to_string().contains("output_location is required"));
+    }
 
-        assert!(report.has_failures());
-        assert_eq!(
-            check_status(&report, "output_dir parent"),
-            PreflightStatus::Failed
+    #[test]
+    fn preflight_returns_clear_error_for_invalid_output_location() {
+        let layout = TestLayout::new();
+        let error = preflight_openfold_impl(
+            &layout.command(),
+            &invocation_profile(json!({"output_location": 42}).to_string()),
+            &preflight_run(layout.execution_parameters()),
+        )
+        .expect_err("non-string output location should fail preflight");
+
+        assert!(
+            error
+                .to_string()
+                .contains("output_location must be a string")
         );
     }
 
@@ -1639,16 +1698,18 @@ mod tests {
     fn openfold_preflight_runner_delegates_to_openfold_preflight() {
         let layout = TestLayout::new();
         let command = layout.command();
+        let invocation_profile = preflight_invocation_profile();
         let run = preflight_run(layout.execution_parameters());
         let runner = OpenFoldPreflightRunner {
             command: &command,
+            invocation_profile: &invocation_profile,
             run: &run,
         };
 
         let report = runner
             .run_preflight()
             .expect("runner should return the OpenFold preflight report");
-        let direct_report = preflight_openfold(&command, &run)
+        let direct_report = preflight_openfold_impl(&command, &invocation_profile, &run)
             .expect("direct OpenFold preflight should return a report");
 
         assert_eq!(report, direct_report);
@@ -1658,9 +1719,11 @@ mod tests {
     fn openfold_preflight_runner_returns_passing_report() {
         let layout = TestLayout::new();
         let command = layout.command();
+        let invocation_profile = preflight_invocation_profile();
         let run = preflight_run(layout.execution_parameters());
         let runner = OpenFoldPreflightRunner {
             command: &command,
+            invocation_profile: &invocation_profile,
             run: &run,
         };
 
@@ -1676,9 +1739,11 @@ mod tests {
         let layout = TestLayout::new();
         let mut command = layout.command();
         command.program.clear();
+        let invocation_profile = preflight_invocation_profile();
         let run = preflight_run(layout.execution_parameters());
         let runner = OpenFoldPreflightRunner {
             command: &command,
+            invocation_profile: &invocation_profile,
             run: &run,
         };
 
