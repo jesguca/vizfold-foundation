@@ -20,7 +20,7 @@ pub async fn execute_command_workflow<R>(
     preflight_runner: Option<&dyn PreflightRunner>,
 ) -> Result<ExecutionWorkflowResult, DbErr>
 where
-    R: CommandRunner,
+    R: CommandRunner + ?Sized,
 {
     let preflight_report = match preflight_runner {
         Some(preflight_runner) => {
