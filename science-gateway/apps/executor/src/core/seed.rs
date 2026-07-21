@@ -196,15 +196,24 @@ pub async fn seed_defaults(db: &DatabaseConnection) -> Result<(), DbErr> {
         .await?
         .is_none()
     {
+        // Assume a local OpenFold install; point at it via VIZFOLD_OPENFOLD_HOME.
+        // The default matches the install root this repo's own Dockerfile builds.
+        let openfold_home =
+            std::env::var("VIZFOLD_OPENFOLD_HOME").unwrap_or_else(|_| "/opt/openfold".into());
         services::model_invocation_profiles::register_model_invocation_profile(
             db,
             services::model_invocation_profiles::RegisterModelInvocationProfileInput {
                 model_backend_id: backend.id,
                 execution_target_id: target.id,
-                invocation_kind: "mock".into(),
-                config_json:
-                    r#"{"mode":"local_mock","output_location":"science-gateway/mock-output"}"#
-                        .into(),
+                invocation_kind: "local_subprocess".into(),
+                config_json: serde_json::json!({
+                    "program": "python3",
+                    "script": "run_pretrained_openfold.py",
+                    "working_dir": &openfold_home,
+                    "env": { "PYTHONPATH": &openfold_home },
+                    "output_location": format!("{openfold_home}/outputs"),
+                })
+                .to_string(),
             },
         )
         .await?;

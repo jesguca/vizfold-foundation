@@ -537,3 +537,72 @@ async fn updates_run_status() -> Result<(), DbErr> {
     assert!(updated.completed_at.is_some());
     Ok(())
 }
+
+#[tokio::test]
+async fn seeded_openfold_profile_plans_a_runnable_command() -> Result<(), DbErr> {
+    use crate::core::model_runners::openfold::plan_openfold_command;
+
+    let db = test_db().await?;
+    seed::seed_defaults(&db).await?;
+
+    let backend = model_backends::list_model_backends(&db)
+        .await?
+        .into_iter()
+        .find(|backend| backend.slug == "openfold")
+        .expect("openfold backend should be seeded");
+    let target = execution_targets::list_execution_targets(&db)
+        .await?
+        .into_iter()
+        .find(|target| target.slug == "local-mock")
+        .expect("local-mock execution target should be seeded");
+    let profile = model_invocation_profiles::list_model_invocation_profiles(&db)
+        .await?
+        .into_iter()
+        .find(|profile| profile.model_backend_id == backend.id)
+        .expect("openfold invocation profile should be seeded");
+
+    // The old seed used invocation_kind "mock", which the planner rejects outright.
+    assert_eq!(profile.invocation_kind, "local_subprocess");
+
+    let run = runs::submit_run(
+        &db,
+        SubmitRunInput {
+            model_backend_id: backend.id,
+            execution_target_id: target.id,
+            invocation_profile_id: profile.id,
+            status: "submitted".into(),
+            input_id: "1UBQ_1".into(),
+            input_sequence: "MSTNPKPQRITF".into(),
+            model_parameters_json: json!({}).to_string(),
+            execution_parameters_json: json!({"fasta_dir": "/tmp/fasta", "data_dir": "/data"})
+                .to_string(),
+        },
+    )
+    .await?;
+
+    let command = plan_openfold_command(&backend, &target, &profile, &run)
+        .expect("seeded OpenFold profile should plan a runnable command");
+    let arg_after = |flag: &str| {
+        command
+            .args
+            .windows(2)
+            .find(|pair| pair[0] == flag)
+            .map(|pair| pair[1].clone())
+    };
+
+    assert_eq!(command.program, "python3");
+    // Template + PDB-dataset grounding is resolved from the run's data_dir.
+    assert!(command.args.contains(&"/data/pdb_mmcif/mmcif_files".into()));
+    assert_eq!(
+        arg_after("--pdb70_database_path").as_deref(),
+        Some("/data/pdb70/pdb70")
+    );
+    // Output is resolved from the profile's output_location, not the run parameters.
+    assert!(
+        arg_after("--output_dir")
+            .expect("output dir should be planned")
+            .ends_with(&format!("outputs/{}", run.id))
+    );
+
+    Ok(())
+}
