@@ -19,17 +19,12 @@ impl MigrationTrait for Migration {
                             .primary_key(),
                     )
                     .col(ColumnDef::new(Artifacts::RunId).integer().not_null())
-                    .col(ColumnDef::new(Artifacts::Kind).string().not_null())
-                    .col(ColumnDef::new(Artifacts::Uri).text().not_null())
-                    .col(ColumnDef::new(Artifacts::MetadataJson).text())
+                    .col(ColumnDef::new(Artifacts::ArtifactType).string().not_null())
+                    .col(ColumnDef::new(Artifacts::Format).string().not_null())
+                    .col(ColumnDef::new(Artifacts::StorageUri).text().not_null())
+                    .col(ColumnDef::new(Artifacts::MetadataJson).text().not_null())
                     .col(
                         ColumnDef::new(Artifacts::CreatedAt)
-                            .timestamp()
-                            .not_null()
-                            .default(Expr::current_timestamp()),
-                    )
-                    .col(
-                        ColumnDef::new(Artifacts::UpdatedAt)
                             .timestamp()
                             .not_null()
                             .default(Expr::current_timestamp()),
@@ -59,11 +54,11 @@ enum Artifacts {
     Table,
     Id,
     RunId,
-    Kind,
-    Uri,
+    ArtifactType,
+    Format,
+    StorageUri,
     MetadataJson,
     CreatedAt,
-    UpdatedAt,
 }
 
 #[derive(DeriveIden)]

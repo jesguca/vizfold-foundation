@@ -1,15 +1,32 @@
 # VizFold Gateway
 
-Prototype for the VizFold Science Gateway.
+Prototype workspace for the VizFold science gateway.
 
-## Structure
+This subtree currently has two distinct tracks:
 
-- `apps/workbench`: browser-based VizFold interface, runnable locally and deployable later as a science gateway frontend.
-- `apps/executor`: Rust backend executor service currently exposing an Axum HTTP adapter.
-- `packages/schemas`: shared data contracts.
-- `packages/adapters`: model adapter interfaces and implementations.
-- `examples`: sample inputs and outputs.
-- `docs`: architecture and implementation notes.
+- `apps/executor`: the active Rust core for persistence and execution-domain work.
+- `apps/workbench`: a disconnected Next.js frontend prototype that still runs on mock data.
+
+The frontend is useful for UX iteration, but the Rust executor is the main implementation path for core data model, database, and execution workflow development.
+
+## Repository Structure
+
+- `apps/`: runnable gateway applications.
+- `apps/executor/`: Rust service and core library. Contains SeaORM entities, migrations, services, seed setup, and the current Axum adapter.
+- `apps/workbench/`: Next.js workbench prototype for browsing concepts and mock flows. Not wired to the Rust executor yet.
+- `docs/`: gateway-specific notes, architecture sketches, future UX ideas, and backlog material.
+- `docs/architecture.md`: high-level architecture notes for the gateway direction.
+- `docs/future-ux.md`: product and interaction ideas that are not implemented yet.
+- `docs/todo.md`: working backlog and rough implementation notes.
+- `docs/img/`: diagrams and supporting images used by the docs.
+- `CONTRIBUTING.md`: lightweight branching and contribution guidance for this fork.
+
+## Current Development Status
+
+- The Rust executor is the primary active implementation path.
+- The workbench is still a UI prototype with static mock data.
+- The workbench does not own persistence and is not connected to the executor yet.
+- SeaORM migrations are part of the Rust executor startup flow.
 
 ## Local Development
 
@@ -18,71 +35,163 @@ Prototype for the VizFold Science Gateway.
 - Node.js 20 LTS or later
 - npm
 - Git
-- Rust toolchain (`cargo`, `rustc`)
+- Rust toolchain with `cargo` and `rustc`
 
-> **Recommended:** Use `nvm` (Linux/macOS/WSL) or `nvm-windows` (Windows) to manage Node.js versions.
-
-Verify your installation:
+Recommended version checks:
 
 ```bash
 node -v
 npm -v
 cargo -V
+rustc -V
 ```
-
----
 
 ### Clone the repository
 
 ```bash
-git clone ...
+git clone <repo-url>
+cd vizfold-foundation/science-gateway
 ```
 
----
+## Workbench Development
 
-### Install dependencies
+Run the frontend prototype from `science-gateway/apps/workbench`:
 
 ```bash
-cd science-gateway/apps/workbench
+cd apps/workbench
 npm install
-```
-
----
-
-### Start the workbench prototype
-
-```bash
 npm run dev
 ```
 
-The workbench prototype will be available at:
+The workbench will be available at [http://localhost:3000](http://localhost:3000).
 
-```
-http://localhost:3000
-```
+Notes:
 
-The workbench is currently work-in-progress and uses static mock data only. It does not own persistence and is not wired to the executor yet.
+- This app currently uses mock data only.
+- No database setup is required for the current workbench prototype.
+- The older generic Next.js README language about alternate package managers or Vercel deployment is not important for current gateway development.
 
 ## Executor Development
 
-The Rust executor is the primary active implementation path.
-
-Run the Axum HTTP adapter locally from the gateway root:
+Run the Rust executor from `science-gateway/apps/executor`:
 
 ```bash
 cd apps/executor
 cargo run
 ```
 
-The health check will be available at:
+The current HTTP health endpoint is available at [http://127.0.0.1:3001/health](http://127.0.0.1:3001/health).
 
-```
-http://127.0.0.1:3001/health
-```
+### Database and SeaORM Migrations
 
-By default, the executor uses SQLite at `apps/executor/data/vizfold.db` and applies SeaORM migrations automatically on startup. To override the location, set `DATABASE_URL`, for example:
+The executor uses SQLite and SeaORM migrations.
 
-```powershell
-$env:DATABASE_URL = "sqlite://data/vizfold.db?mode=rwc"
+Current behavior:
+
+- Default database URL: `sqlite://data/vizfold.db?mode=rwc`
+- Database file location, when using the default URL: `science-gateway/apps/executor/data/vizfold.db`
+- Parent directories are created automatically if they do not exist.
+- SeaORM migrations run automatically during executor startup.
+- Default seed records are inserted on startup if they are missing.
+
+Create the database and apply migrations by starting the executor:
+
+```bash
+cd apps/executor
 cargo run
 ```
+
+That startup path will:
+
+1. open or create the SQLite database file,
+2. enable SQLite foreign keys,
+3. run SeaORM migrations,
+4. seed default model backend and execution target records.
+
+To use a different SQLite file, set `DATABASE_URL` before running the executor.
+
+PowerShell:
+
+```powershell
+$env:DATABASE_URL = "sqlite://data/vizfold-dev.db?mode=rwc"
+cargo run
+```
+
+Bash:
+
+```bash
+export DATABASE_URL="sqlite://data/vizfold-dev.db?mode=rwc"
+cargo run
+```
+
+Important limitation:
+
+- There is not currently a separate CLI command in this repo for running SeaORM migrations independently of the executor process.
+- The supported way to form the DB and apply migrations right now is to start the executor.
+
+### Resetting an Existing Development Database
+
+If you already ran an earlier version of the Rust executor, you may have an older SQLite schema on disk.
+
+The most likely symptom is an error like:
+
+```text
+no such column: model_backends.version
+```
+
+Why this happens:
+
+- SeaORM records applied migrations in the `seaql_migrations` table.
+- If a local database already marked the original migration names as applied, SeaORM will not rerun them automatically.
+- That means an older `vizfold.db` can keep the old table shape even after the code expects the new schema.
+
+This is a Rust executor migration-state issue. It is not caused by the disconnected Next.js workbench itself. The frontend does not currently manage this SQLite database.
+
+For the current development-only setup, the safest fix is to remove the existing executor database and let the executor recreate it.
+
+If you are using the default database path:
+
+PowerShell:
+
+```powershell
+Remove-Item .\apps\executor\data\vizfold.db
+cd .\apps\executor
+cargo run
+```
+
+Bash:
+
+```bash
+rm ./apps/executor/data/vizfold.db
+cd ./apps/executor
+cargo run
+```
+
+If you set a custom `DATABASE_URL`, delete the SQLite file referenced by that URL instead, then start the executor again.
+
+After reset, executor startup will recreate the DB, apply the current SeaORM migrations, and seed the default records again.
+
+Current expectation:
+
+- this reset guidance is appropriate for local development
+- no production-safe migration path exists yet for carrying an older executor DB forward automatically
+
+### Tests
+
+Run the Rust executor tests from `science-gateway/apps/executor`:
+
+```bash
+cargo test
+```
+
+These tests exercise the in-memory SQLite path, SeaORM migrations, and the core registration/run/artifact services.
+
+## What May Be Obsolete
+
+The previous gateway README referenced directories such as `packages/schemas`, `packages/adapters`, and `examples` as if they were part of `science-gateway`. Those entries do not exist in the current `science-gateway` subtree and should not be treated as active local structure here.
+
+Likewise, the workbench should not be described as integrated with the backend yet. The current accurate state is:
+
+- frontend prototype in `apps/workbench`
+- Rust core and persistence work in `apps/executor`
+- no real executor-to-workbench wiring yet

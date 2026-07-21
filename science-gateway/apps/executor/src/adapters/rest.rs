@@ -24,9 +24,7 @@ pub async fn serve() {
     println!("Database connected using {}", config::database_url());
     let _ = core.db();
 
-    axum::serve(listener, app)
-        .await
-        .expect("server error");
+    axum::serve(listener, app).await.expect("server error");
 }
 
 async fn health() -> Json<serde_json::Value> {

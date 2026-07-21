@@ -2,7 +2,7 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter, Set,
 };
 
-use crate::core::entities::artifacts;
+use crate::core::{entities::artifacts, services::artifacts::RecordArtifactInput};
 
 pub async fn list_by_run(
     db: &DatabaseConnection,
@@ -16,16 +16,14 @@ pub async fn list_by_run(
 
 pub async fn create(
     db: &DatabaseConnection,
-    run_id: i32,
-    kind: &str,
-    uri: &str,
-    metadata_json: Option<&str>,
+    input: RecordArtifactInput,
 ) -> Result<artifacts::Model, DbErr> {
     artifacts::ActiveModel {
-        run_id: Set(run_id),
-        kind: Set(kind.to_owned()),
-        uri: Set(uri.to_owned()),
-        metadata_json: Set(metadata_json.map(str::to_owned)),
+        run_id: Set(input.run_id),
+        artifact_type_id: Set(input.artifact_type_id),
+        format: Set(input.format),
+        storage_uri: Set(input.storage_uri),
+        metadata_json: Set(input.metadata_json),
         ..Default::default()
     }
     .insert(db)

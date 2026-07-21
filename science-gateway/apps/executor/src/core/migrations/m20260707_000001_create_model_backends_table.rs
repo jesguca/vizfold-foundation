@@ -25,9 +25,15 @@ impl MigrationTrait for Migration {
                             .unique_key(),
                     )
                     .col(ColumnDef::new(ModelBackends::Label).string().not_null())
-                    .col(ColumnDef::new(ModelBackends::Summary).text().not_null())
+                    .col(ColumnDef::new(ModelBackends::Version).string())
+                    .col(ColumnDef::new(ModelBackends::Description).text())
                     .col(
-                        ColumnDef::new(ModelBackends::CapabilitiesJson)
+                        ColumnDef::new(ModelBackends::ArtifactCapabilitiesJson)
+                            .text()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ModelBackends::ParameterSchemaJson)
                             .text()
                             .not_null(),
                     )
@@ -61,8 +67,10 @@ enum ModelBackends {
     Id,
     Slug,
     Label,
-    Summary,
-    CapabilitiesJson,
+    Version,
+    Description,
+    ArtifactCapabilitiesJson,
+    ParameterSchemaJson,
     CreatedAt,
     UpdatedAt,
 }

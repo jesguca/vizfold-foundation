@@ -21,9 +21,13 @@ pub async fn connect_and_migrate() -> Result<DatabaseConnection, DbErr> {
     ))
     .await?;
 
-    crate::core::migrations::Migrator::up(&db, None).await?;
+    migrate_database(&db).await?;
 
     Ok(db)
+}
+
+pub async fn migrate_database(db: &DatabaseConnection) -> Result<(), DbErr> {
+    crate::core::migrations::Migrator::up(db, None).await
 }
 
 fn ensure_sqlite_parent_dir(database_url: &str) -> Result<(), DbErr> {
