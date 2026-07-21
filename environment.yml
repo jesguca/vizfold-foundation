@@ -1,14 +1,29 @@
-name: openfold-env 
+# VizFold environment. Versions are inferred, not pinned: the constraints below
+# are the real requirements and the solver derives a coherent stack from them.
+#
+#   cuda-version=12.8  the CUDA runtime must not exceed the driver. Delta's 570.x
+#                      reports __cuda=12.8, and a 12.9 runtime makes OpenMM's CUDA
+#                      platform fail Amber minimization even when torch matches it.
+#   flash-attn>=2.7    openfold/model/primitives.py unpacks 5 values from
+#                      unpad_input; earlier versions return 4.
+#   deepspeed=*=cuda*  the plain build resolves to a CPU-only variant.
+#   python=3.11        what this stack was solved and verified against.
+#
+# flash-attn and dm-tree come from conda-forge because their pip distributions
+# need --no-build-isolation or a source build with no py311 wheel.
+
+name: openfold-env
 channels:
   - conda-forge
   - bioconda
   - pytorch
-  - nvidia 
+  - nvidia
 dependencies:
-  - cuda
+  - cuda-version=12.8
+  - cuda-nvcc
+  - cuda-cudart-dev
   - gcc=12.4
-  - python=3.10
-  - setuptools=59.5.0
+  - python=3.11
   - pip
   - openmm
   - pdbfixer
@@ -31,10 +46,9 @@ dependencies:
   - bioconda::hmmer
   - bioconda::hhsuite
   - bioconda::kalign2
-  - pytorch::pytorch=2.5
-  - pytorch::pytorch-cuda=12.4
+  - deepspeed=*=cuda*
+  - dm-tree
+  - flash-attn>=2.7
+  - pytorch-gpu
   - pip:
-      - deepspeed==0.14.5
-      - dm-tree==0.1.6
       - git+https://github.com/NVIDIA/dllogger.git
-      - flash-attn==2.6.3
