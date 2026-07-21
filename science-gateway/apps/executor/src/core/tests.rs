@@ -76,6 +76,52 @@ async fn seeds_artifact_type_catalog() -> Result<(), DbErr> {
     Ok(())
 }
 
+#[tokio::test]
+async fn seeds_local_openfold_target_and_profile_without_removing_mock_seed() -> Result<(), DbErr> {
+    let db = test_db().await?;
+
+    seed::seed_defaults(&db).await?;
+    seed::seed_defaults(&db).await?;
+
+    let targets = execution_targets::list_execution_targets(&db).await?;
+    assert!(targets.iter().any(|target| target.slug == "local-mock"));
+    let openfold_target = targets
+        .iter()
+        .find(|target| target.slug == "local-openfold")
+        .expect("local OpenFold target should be seeded");
+    assert_eq!(openfold_target.target_type, "local");
+    assert_eq!(
+        openfold_target.description.as_deref(),
+        Some("Local OpenFold subprocess execution target for demo/development.")
+    );
+
+    let backend = model_backends::list_model_backends(&db)
+        .await?
+        .into_iter()
+        .find(|backend| backend.slug == "openfold")
+        .expect("OpenFold backend should be seeded");
+    let profile = model_invocation_profiles::list_model_invocation_profiles(&db)
+        .await?
+        .into_iter()
+        .find(|profile| {
+            profile.model_backend_id == backend.id
+                && profile.execution_target_id == openfold_target.id
+        })
+        .expect("local OpenFold profile should be seeded");
+    assert_eq!(profile.invocation_kind, "local_subprocess");
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&profile.config_json)
+            .map_err(|error| DbErr::Custom(error.to_string()))?,
+        json!({
+            "program": "python3",
+            "script": "run_pretrained_openfold.py",
+            "working_dir": ".",
+            "output_location": "science-gateway/openfold-demo-output",
+        })
+    );
+    Ok(())
+}
+
 fn sample_execution_target_input() -> RegisterExecutionTargetInput {
     RegisterExecutionTargetInput {
         slug: "local-mock".into(),

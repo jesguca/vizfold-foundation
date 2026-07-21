@@ -178,6 +178,28 @@ pub async fn seed_defaults(db: &DatabaseConnection) -> Result<(), DbErr> {
         .await?;
     }
 
+    if execution_targets::Entity::find()
+        .filter(execution_targets::Column::Slug.eq("local-openfold"))
+        .one(db)
+        .await?
+        .is_none()
+    {
+        services::execution_targets::register_execution_target(
+            db,
+            services::execution_targets::RegisterExecutionTargetInput {
+                slug: "local-openfold".into(),
+                target_type: "local".into(),
+                description: Some(
+                    "Local OpenFold subprocess execution target for demo/development.".into(),
+                ),
+                available_resources_json:
+                    r#"{"type":"object","properties":{"model_device":{"type":"string","enum":["cpu","cuda:0"],"default":"cuda:0","cli_flag":"--model_device"},"cpus":{"type":"integer","minimum":1,"maximum":14,"cli_flag":"--cpus"}}}"#
+                        .into(),
+            },
+        )
+        .await?;
+    }
+
     let backend = model_backends::Entity::find()
         .filter(model_backends::Column::Slug.eq("openfold"))
         .one(db)
@@ -204,6 +226,33 @@ pub async fn seed_defaults(db: &DatabaseConnection) -> Result<(), DbErr> {
                 invocation_kind: "mock".into(),
                 config_json:
                     r#"{"mode":"local_mock","output_location":"science-gateway/mock-output"}"#
+                        .into(),
+            },
+        )
+        .await?;
+    }
+
+    let openfold_target = execution_targets::Entity::find()
+        .filter(execution_targets::Column::Slug.eq("local-openfold"))
+        .one(db)
+        .await?
+        .ok_or_else(|| DbErr::Custom("seeded local OpenFold execution target is missing".into()))?;
+
+    if model_invocation_profiles::Entity::find()
+        .filter(model_invocation_profiles::Column::ModelBackendId.eq(backend.id))
+        .filter(model_invocation_profiles::Column::ExecutionTargetId.eq(openfold_target.id))
+        .one(db)
+        .await?
+        .is_none()
+    {
+        services::model_invocation_profiles::register_model_invocation_profile(
+            db,
+            services::model_invocation_profiles::RegisterModelInvocationProfileInput {
+                model_backend_id: backend.id,
+                execution_target_id: openfold_target.id,
+                invocation_kind: "local_subprocess".into(),
+                config_json:
+                    r#"{"program":"python3","script":"run_pretrained_openfold.py","working_dir":".","output_location":"science-gateway/openfold-demo-output"}"#
                         .into(),
             },
         )
