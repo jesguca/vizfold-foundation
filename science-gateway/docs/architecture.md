@@ -14,7 +14,7 @@ This diagram describes the MVP data model for the Rust executor core. The goal i
 
 `MODEL_INVOCATION_PROFILE` connects a specific model backend to a specific execution target. It owns the model-target-specific invocation configuration, such as subprocess, Docker, SLURM, or gateway invocation details. This prevents model-specific paths or command templates from leaking into the generic execution target definition.
 
-`RUN` represents one concrete execution request. It selects a model backend, execution target, and invocation profile, then stores the selected model and execution parameters for that specific run. `RUN.input_id` is the stable model-facing input identity for the run. For OpenFold, this is intended to become the canonical FASTA record ID/header tag, default alignment key, and artifact filename prefix. It should not be mutated for workspace/output collision handling; use run/workspace identifiers for that instead.
+`RUN` represents one concrete execution request. It selects a model backend, execution target, and invocation profile, then records the concrete model selections and run-time execution/input choices for that run. `RUN.input_id` is the stable model-facing input identity for the run. For OpenFold, this is intended to become the canonical FASTA record ID/header tag, default alignment key, and artifact filename prefix. It should not be mutated for workspace/output collision handling; use run/workspace identifiers for that instead.
 
 `ARTIFACT_TYPE` represents catalog/reference data for known artifact kinds that the executor or visualization layer may understand, such as protein structures, attention heatmaps, PyMOL sessions, trace archives, or manifests. It stores stable type metadata including a slug, default format, display mode, viewer kind, description, and optional metadata schema. This separates artifact classification and visualization hints from concrete produced artifact instances.
 
@@ -31,10 +31,14 @@ The current MVP has one model-facing parameter schema and one target-level resou
 - `ModelBackend.parameter_schema_json`
 - `ExecutionTarget.available_resources_json`
 
-`Run` has two concrete parameter buckets:
+`Run` has two concrete parameter buckets with distinct responsibilities:
 
-- `Run.model_parameters_json`
-- `Run.execution_parameters_json`
+| Column | Intended meaning |
+| --- | --- |
+| `Run.model_parameters_json` | Explicit model-argument values or overrides selected for this run, such as an OpenFold preset or model feature flag. The allowed arguments, types, CLI flags, and defaults are defined by `ModelBackend.parameter_schema_json`; schema defaults may be applied when a value is omitted here. This column is not redundant with the schema: it preserves the run's chosen model values. |
+| `Run.execution_parameters_json` | Run-scoped input, runtime, and resource choices consumed by schema entries sourced from `execution_parameters`, such as FASTA/alignment inputs, the current `data_dir`, device selection, or CPU count. Target resources constrain these values through `ExecutionTarget.available_resources_json`. It must not carry invocation-profile configuration or normalized output paths. |
+
+Resolved output locations are derived from `ModelInvocationProfile.config_json.output_location` and `Run.id`, rather than being stored as `output_dir` or `attn_map_dir` execution parameters.
 
 The target resource description must not be treated as a competing model-command parameter schema.
 
