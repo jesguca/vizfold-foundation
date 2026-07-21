@@ -54,6 +54,7 @@ pub fn plan_openfold_command(
         &model_schema,
         &model_parameters,
         &execution_parameters,
+        &config,
         invocation_profile,
         run,
     )?;
@@ -472,6 +473,7 @@ fn append_model_schema_args(
     model_schema: &Value,
     model_parameters: &Value,
     execution_parameters: &Value,
+    invocation_config: &Value,
     invocation_profile: &model_invocation_profiles::Model,
     run: &runs::Model,
 ) -> Result<(), DbErr> {
@@ -481,6 +483,7 @@ fn append_model_schema_args(
                 declaration,
                 model_parameters,
                 execution_parameters,
+                invocation_config,
                 invocation_profile,
                 run,
             )?);
@@ -508,6 +511,7 @@ fn append_model_schema_args(
                 declaration,
                 model_parameters,
                 execution_parameters,
+                invocation_config,
                 invocation_profile,
                 run,
             )?;
@@ -570,6 +574,7 @@ fn resolve_declared_value(
     declaration: &Value,
     _model_parameters: &Value,
     execution_parameters: &Value,
+    invocation_config: &Value,
     invocation_profile: &model_invocation_profiles::Model,
     run: &runs::Model,
 ) -> Result<String, DbErr> {
@@ -584,6 +589,16 @@ fn resolve_declared_value(
             let parameter_name = required_string(declaration, "parameter")?;
             required_string(execution_parameters, &parameter_name)
         }
+        "invocation_profile_config" => {
+            let parameter_name = required_string(declaration, "parameter")?;
+            let value =
+                required_invocation_profile_config_string(invocation_config, &parameter_name)?;
+            let mut path = PathBuf::from(value);
+            if let Some(relative_path) = optional_string(declaration, "relative_path") {
+                path.push(relative_path);
+            }
+            Ok(path.to_string_lossy().into_owned())
+        }
         "run_output_workspace" => {
             let workspace = resolve_output_location(invocation_profile, run)?;
             let path = optional_string(declaration, "relative_path")
@@ -595,6 +610,24 @@ fn resolve_declared_value(
             "unsupported model parameter source '{source}'"
         ))),
     }
+}
+
+fn required_invocation_profile_config_string(
+    config: &Value,
+    parameter_name: &str,
+) -> Result<String, DbErr> {
+    let Some(value) = config.get(parameter_name) else {
+        return Err(DbErr::Custom(format!(
+            "invocation profile config '{parameter_name}' is required"
+        )));
+    };
+    let Some(value) = value.as_str().filter(|value| !value.trim().is_empty()) else {
+        return Err(DbErr::Custom(format!(
+            "invocation profile config '{parameter_name}' must be a non-empty string"
+        )));
+    };
+
+    Ok(value.to_owned())
 }
 
 fn selected_or_default_string(
@@ -746,7 +779,7 @@ mod tests {
 
     use super::{
         OpenFoldPreflightRunner, plan_openfold_command,
-        preflight_openfold as preflight_openfold_impl,
+        preflight_openfold as preflight_openfold_impl, resolve_declared_value,
     };
 
     static NEXT_TEMP_DIR: AtomicUsize = AtomicUsize::new(0);
@@ -1115,6 +1148,57 @@ mod tests {
         .expect_err("schema-declared output paths should require output_location");
 
         assert!(error.to_string().contains("output_location is required"));
+    }
+
+    #[test]
+    fn resolves_invocation_profile_config_source_with_relative_path() {
+        let invocation_config = json!({"profile_data_dir": "/profile/data"});
+        let declaration = json!({
+            "source": "invocation_profile_config",
+            "parameter": "profile_data_dir",
+            "relative_path": "datasets/openfold"
+        });
+
+        let value = resolve_declared_value(
+            &declaration,
+            &json!({}),
+            &json!({}),
+            &invocation_config,
+            &invocation_profile(invocation_config.to_string()),
+            &run(json!({}).to_string(), json!({}).to_string()),
+        )
+        .expect("invocation profile config source should resolve");
+
+        assert_eq!(
+            value,
+            PathBuf::from("/profile/data")
+                .join("datasets/openfold")
+                .to_string_lossy()
+        );
+    }
+
+    #[test]
+    fn invocation_profile_config_source_requires_the_declared_key() {
+        let declaration = json!({
+            "source": "invocation_profile_config",
+            "parameter": "profile_data_dir"
+        });
+
+        let error = resolve_declared_value(
+            &declaration,
+            &json!({}),
+            &json!({}),
+            &json!({}),
+            &invocation_profile("{}".into()),
+            &run(json!({}).to_string(), json!({}).to_string()),
+        )
+        .expect_err("missing invocation profile config should fail");
+
+        assert!(
+            error
+                .to_string()
+                .contains("invocation profile config 'profile_data_dir' is required")
+        );
     }
 
     #[test]

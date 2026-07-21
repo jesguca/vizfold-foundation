@@ -79,6 +79,7 @@ The current OpenFold source vocabulary is:
 | model parameter (no `source`) | Read from `Run.model_parameters_json`, falling back to a schema default when present. |
 | `execution_parameters` | Read the named `parameter` from `Run.execution_parameters_json`. |
 | `data_dir` | Read `data_dir` from `Run.execution_parameters_json` and join the declaration's `relative_path`. |
+| `invocation_profile_config` | Read the named `parameter` from `ModelInvocationProfile.config_json`. An optional `relative_path` is joined after resolution. |
 | `run_output_workspace` | Resolve `ModelInvocationProfile.config_json.output_location / Run.id`. An optional `relative_path` is joined after resolution. |
 
 For example, OpenFold's normalized output arguments are declared in the model schema rather than emitted as planner-specific special cases:
@@ -99,7 +100,7 @@ For example, OpenFold's normalized output arguments are declared in the model sc
 }
 ```
 
-`invocation_profile_config` is the planned next source kind for direct profile-owned values such as a target-specific `data_dir`. It is not yet used by the OpenFold parameter schema; current `data_dir` behavior remains unchanged.
+`invocation_profile_config` enables direct profile-owned values such as a target-specific `data_dir`. It is available to schema declarations but is not yet used by the OpenFold parameter schema; current `data_dir` behavior remains unchanged.
 
 ### Output location resolution
 
