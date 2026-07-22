@@ -149,6 +149,12 @@ async fn register_artifacts(
         .await?
         .ok_or_else(|| DbErr::Custom(format!("run {run_id} does not exist")))?
         .run;
+    if run.status != "completed" {
+        println!(
+            "Warning: run {run_id} has status '{}'; registered artifacts may be partial.",
+            run.status
+        );
+    }
     let backend = model_backends::find_by_id(database, run.model_backend_id)
         .await?
         .ok_or_else(|| DbErr::Custom("run model backend does not exist".into()))?;
