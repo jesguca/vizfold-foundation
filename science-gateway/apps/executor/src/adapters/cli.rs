@@ -1,5 +1,6 @@
-use clap::{Args, Parser, Subcommand};
+use clap::{ArgAction, Args, Parser, Subcommand};
 use sea_orm::DbErr;
+use serde_json::json;
 
 use crate::core::{
     db,
@@ -23,6 +24,8 @@ enum Command {
     List(ListArgs),
     /// Show one executor record.
     Show(ShowArgs),
+    /// Queue a run for a supported model backend.
+    QueueRun(QueueRunArgs),
 }
 
 #[derive(Debug, Args)]
@@ -59,6 +62,46 @@ enum ShowResource {
     Run { run_id: i32 },
 }
 
+#[derive(Clone, Debug, Args)]
+struct QueueRunArgs {
+    #[command(subcommand)]
+    model: QueueRunModel,
+}
+
+#[derive(Clone, Debug, Subcommand)]
+enum QueueRunModel {
+    /// Queue an OpenFold run.
+    Openfold(OpenfoldQueueArgs),
+}
+
+#[derive(Clone, Debug, Args)]
+struct OpenfoldQueueArgs {
+    #[arg(long)]
+    input_id: String,
+    #[arg(long)]
+    input_sequence: String,
+    #[arg(long)]
+    fasta_dir: String,
+    #[arg(long)]
+    data_dir: String,
+    #[arg(long)]
+    alignment_dir: Option<String>,
+    #[arg(long, default_value = "cpu")]
+    model_device: String,
+    #[arg(long, default_value_t = 1)]
+    cpus: i64,
+    #[arg(long, default_value_t = 1)]
+    residue_idx: i64,
+    #[arg(long)]
+    demo_attn: bool,
+    #[arg(long, default_value_t = true, action = ArgAction::Set)]
+    save_outputs: bool,
+    #[arg(long, default_value_t = 1)]
+    num_recycles_save: i64,
+    #[arg(long)]
+    use_precomputed_alignments: bool,
+}
+
 pub async fn run() -> Result<(), DbErr> {
     let cli = Cli::parse();
     let database = db::connect_and_migrate().await?;
@@ -77,9 +120,88 @@ pub async fn run() -> Result<(), DbErr> {
         Command::Show(show) => match show.resource {
             ShowResource::Run { run_id } => show_run(&database, run_id).await?,
         },
+        Command::QueueRun(queue) => match queue.model {
+            QueueRunModel::Openfold(args) => queue_openfold_run(&database, args).await?,
+        },
     }
 
     Ok(())
+}
+
+async fn queue_openfold_run(
+    database: &sea_orm::DatabaseConnection,
+    args: OpenfoldQueueArgs,
+) -> Result<(), DbErr> {
+    if args.use_precomputed_alignments && args.alignment_dir.is_none() {
+        return Err(DbErr::Custom(
+            "--alignment-dir is required when --use-precomputed-alignments is set".into(),
+        ));
+    }
+
+    let backend = model_backends::find_by_slug(database, "openfold")
+        .await?
+        .ok_or_else(seed_required_error)?;
+    let target = execution_targets::find_by_slug(database, "local-openfold")
+        .await?
+        .ok_or_else(seed_required_error)?;
+    let profile = model_invocation_profiles::list(database)
+        .await?
+        .into_iter()
+        .find(|profile| {
+            profile.model_backend_id == backend.id
+                && profile.execution_target_id == target.id
+                && profile.invocation_kind == "local_subprocess"
+        })
+        .ok_or_else(seed_required_error)?;
+
+    let mut execution_parameters = serde_json::Map::from_iter([
+        ("fasta_dir".into(), json!(args.fasta_dir)),
+        ("data_dir".into(), json!(args.data_dir)),
+        ("residue_idx".into(), json!(args.residue_idx)),
+        (
+            "use_precomputed_alignments".into(),
+            json!(args.use_precomputed_alignments),
+        ),
+        ("model_device".into(), json!(args.model_device)),
+        ("cpus".into(), json!(args.cpus)),
+    ]);
+    if let Some(alignment_dir) = args.alignment_dir {
+        execution_parameters.insert("alignment_dir".into(), json!(alignment_dir));
+    }
+
+    let run = runs::submit_run(
+        database,
+        runs::SubmitRunInput {
+            model_backend_id: backend.id,
+            execution_target_id: target.id,
+            invocation_profile_id: profile.id,
+            status: "submitted".into(),
+            input_id: args.input_id,
+            input_sequence: args.input_sequence,
+            model_parameters_json: json!({
+                "save_outputs": args.save_outputs,
+                "demo_attn": args.demo_attn,
+                "num_recycles_save": args.num_recycles_save,
+            })
+            .to_string(),
+            execution_parameters_json: serde_json::Value::Object(execution_parameters).to_string(),
+        },
+    )
+    .await?;
+
+    println!("Queued OpenFold run {}", run.id);
+    println!("status: {}", run.status);
+    println!("input_id: {}", run.input_id);
+    println!("\nNext:");
+    println!("  vizfold execute-run openfold {}", run.id);
+    Ok(())
+}
+
+fn seed_required_error() -> DbErr {
+    DbErr::Custom(
+        "OpenFold backend, local-openfold target, or matching profile is missing; run `vizfold seed`"
+            .into(),
+    )
 }
 
 async fn list_models(database: &sea_orm::DatabaseConnection) -> Result<(), DbErr> {
@@ -248,6 +370,9 @@ fn print_row<'a>(cells: impl IntoIterator<Item = &'a str>, widths: &[usize]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sea_orm::{ConnectionTrait, Database, Statement};
+
+    use crate::core::{db, seed};
 
     #[test]
     fn parses_list_runs_with_status_filter() {
@@ -273,5 +398,121 @@ mod tests {
                 resource: ShowResource::Run { run_id: 1 }
             })
         ));
+    }
+
+    #[test]
+    fn parses_queue_openfold_required_arguments() {
+        let cli = Cli::try_parse_from([
+            "vizfold",
+            "queue-run",
+            "openfold",
+            "--input-id",
+            "6KWC_1",
+            "--input-sequence",
+            "GSTI",
+            "--fasta-dir",
+            "fasta",
+            "--data-dir",
+            "data",
+        ])
+        .expect("queue-run command should parse");
+
+        assert!(matches!(
+            cli.command,
+            Command::QueueRun(QueueRunArgs {
+                model: QueueRunModel::Openfold(OpenfoldQueueArgs {
+                    input_id,
+                    input_sequence,
+                    fasta_dir,
+                    data_dir,
+                    demo_attn: false,
+                    use_precomputed_alignments: false,
+                    cpus: 1,
+                    ..
+                })
+            }) if input_id == "6KWC_1" && input_sequence == "GSTI" && fasta_dir == "fasta" && data_dir == "data"
+        ));
+    }
+
+    #[test]
+    fn parses_queue_openfold_optional_flags() {
+        let cli = Cli::try_parse_from([
+            "vizfold",
+            "queue-run",
+            "openfold",
+            "--input-id",
+            "6KWC_1",
+            "--input-sequence",
+            "GSTI",
+            "--fasta-dir",
+            "fasta",
+            "--data-dir",
+            "data",
+            "--cpus",
+            "4",
+            "--demo-attn",
+            "--use-precomputed-alignments",
+        ])
+        .expect("queue-run command should parse");
+
+        assert!(matches!(
+            cli.command,
+            Command::QueueRun(QueueRunArgs {
+                model: QueueRunModel::Openfold(OpenfoldQueueArgs {
+                    cpus: 4,
+                    demo_attn: true,
+                    use_precomputed_alignments: true,
+                    ..
+                })
+            })
+        ));
+    }
+
+    #[tokio::test]
+    async fn queue_openfold_run_uses_seeded_records() -> Result<(), DbErr> {
+        let database = Database::connect("sqlite::memory:").await?;
+        database
+            .execute(Statement::from_string(
+                database.get_database_backend(),
+                "PRAGMA foreign_keys = ON".to_owned(),
+            ))
+            .await?;
+        db::migrate_database(&database).await?;
+        seed::seed_defaults(&database).await?;
+
+        queue_openfold_run(
+            &database,
+            OpenfoldQueueArgs {
+                input_id: "6KWC_1".into(),
+                input_sequence: "GSTI".into(),
+                fasta_dir: "fasta".into(),
+                data_dir: "data".into(),
+                alignment_dir: Some("alignments".into()),
+                model_device: "cpu".into(),
+                cpus: 1,
+                residue_idx: 1,
+                demo_attn: true,
+                save_outputs: true,
+                num_recycles_save: 1,
+                use_precomputed_alignments: true,
+            },
+        )
+        .await?;
+
+        let runs = runs::list_runs(&database).await?;
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].status, "submitted");
+        assert_eq!(runs[0].input_id, "6KWC_1");
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&runs[0].model_parameters_json)
+                .expect("model parameters should be valid JSON"),
+            json!({"save_outputs": true, "demo_attn": true, "num_recycles_save": 1})
+        );
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&runs[0].execution_parameters_json)
+                .expect("execution parameters should be valid JSON"),
+            json!({"fasta_dir": "fasta", "data_dir": "data", "alignment_dir": "alignments", "residue_idx": 1, "use_precomputed_alignments": true, "model_device": "cpu", "cpus": 1})
+        );
+        Ok(())
     }
 }

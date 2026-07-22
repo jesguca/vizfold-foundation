@@ -1,4 +1,6 @@
-use sea_orm::{ActiveModelTrait, DatabaseConnection, DbErr, EntityTrait, Set};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter, Set,
+};
 
 use crate::core::{entities::model_backends, services::model_backends::RegisterModelBackendInput};
 
@@ -11,6 +13,16 @@ pub async fn find_by_id(
     id: i32,
 ) -> Result<Option<model_backends::Model>, DbErr> {
     model_backends::Entity::find_by_id(id).one(db).await
+}
+
+pub async fn find_by_slug(
+    db: &DatabaseConnection,
+    slug: &str,
+) -> Result<Option<model_backends::Model>, DbErr> {
+    model_backends::Entity::find()
+        .filter(model_backends::Column::Slug.eq(slug))
+        .one(db)
+        .await
 }
 
 pub async fn create(
