@@ -1,7 +1,7 @@
 #!/bin/bash
 # Install OpenFold, anywhere. Add a cluster as install/sites/<ClusterName>.sh.
 #
-#   curl -sL https://raw.githubusercontent.com/yasithdev/vizfold-foundation/delta-install-upstream/install.sh | bash
+#   curl -sL https://raw.githubusercontent.com/jesguca/vizfold-foundation/main/install.sh | bash
 #   ./install.sh
 set -euo pipefail
 
