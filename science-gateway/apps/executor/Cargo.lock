@@ -634,6 +634,7 @@ dependencies = [
  "async-trait",
  "axum",
  "chrono",
+ "clap",
  "dotenvy",
  "sea-orm",
  "sea-orm-migration",
