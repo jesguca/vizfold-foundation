@@ -5,8 +5,8 @@
 #   ./install.sh
 set -euo pipefail
 
-REPO_URL=${OPENFOLD_REPO_URL:-https://github.com/yasithdev/vizfold-foundation.git}
-BRANCH=${OPENFOLD_BRANCH:-openfold-delta-install}   # -> jesguca/main once merged
+REPO_URL=${OPENFOLD_REPO_URL:-https://github.com/jesguca/vizfold-foundation.git}
+BRANCH=${OPENFOLD_BRANCH:-main}
 SRC=${OPENFOLD_SRC:-$HOME/openfold-src}   # outlives the job; the editable install points here
 
 die() { echo "FATAL: $*" >&2; exit 1; }
