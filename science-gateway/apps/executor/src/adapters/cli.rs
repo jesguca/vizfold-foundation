@@ -6,10 +6,14 @@ use std::path::{Path, PathBuf};
 use crate::core::{
     commands::LocalCommandRunner,
     db,
+    output_locations::resolve_output_location,
     preflight::PreflightStatus,
     repositories::{execution_targets, model_backends, model_invocation_profiles},
     seed::seed_defaults,
-    services::{openfold_execution::execute_openfold_run, runs},
+    services::{
+        artifacts, openfold_artifacts::register_known_openfold_artifacts,
+        openfold_execution::execute_openfold_run, runs,
+    },
 };
 
 #[derive(Debug, Parser)]
@@ -31,6 +35,8 @@ enum Command {
     QueueRun(QueueRunArgs),
     /// Execute a queued run.
     ExecuteRun { run_id: i32 },
+    /// Register known artifacts for a completed run.
+    RegisterArtifacts { run_id: i32 },
 }
 
 #[derive(Debug, Args)]
@@ -129,8 +135,62 @@ pub async fn run() -> Result<(), DbErr> {
             QueueRunModel::Openfold(args) => queue_openfold_run(&database, args).await?,
         },
         Command::ExecuteRun { run_id } => execute_run(&database, run_id).await?,
+        Command::RegisterArtifacts { run_id } => register_artifacts(&database, run_id).await?,
     }
 
+    Ok(())
+}
+
+async fn register_artifacts(
+    database: &sea_orm::DatabaseConnection,
+    run_id: i32,
+) -> Result<(), DbErr> {
+    let run = runs::get_run_with_artifacts(database, run_id)
+        .await?
+        .ok_or_else(|| DbErr::Custom(format!("run {run_id} does not exist")))?
+        .run;
+    let backend = model_backends::find_by_id(database, run.model_backend_id)
+        .await?
+        .ok_or_else(|| DbErr::Custom("run model backend does not exist".into()))?;
+    if backend.slug != "openfold" {
+        return Err(DbErr::Custom(format!(
+            "artifact registration is currently only implemented for OpenFold runs (run {run_id} uses backend '{}')",
+            backend.slug
+        )));
+    }
+
+    let profile = model_invocation_profiles::find_by_id(database, run.invocation_profile_id)
+        .await?
+        .ok_or_else(|| DbErr::Custom("model invocation profile does not exist".into()))?;
+    let workspace = resolve_output_location(&profile, &run)?;
+    let expected_paths = [
+        ("run_output_directory", workspace.clone()),
+        ("attention_output_directory", workspace.join("attention")),
+    ];
+    let existing = artifacts::list_artifacts_for_run(database, run_id).await?;
+    let artifacts = register_known_openfold_artifacts(database, run_id).await?;
+
+    println!("Registered artifacts for run {run_id}");
+    println!("\nOutput workspace:\n  {}", workspace.display());
+    println!("\nArtifacts:");
+    for (artifact_type, path) in expected_paths {
+        let storage_uri = path.display().to_string();
+        if !path.is_dir() {
+            println!("  [skipped] {artifact_type} -> path does not exist: {storage_uri}");
+        } else if existing
+            .iter()
+            .any(|artifact| artifact.storage_uri == storage_uri)
+        {
+            println!("  [already present] {artifact_type} -> {storage_uri}");
+        } else if artifacts
+            .iter()
+            .any(|artifact| artifact.storage_uri == storage_uri)
+        {
+            println!("  [registered] {artifact_type} -> {storage_uri}");
+        } else {
+            println!("  [skipped] {artifact_type} -> not registered");
+        }
+    }
     Ok(())
 }
 
@@ -600,6 +660,17 @@ mod tests {
             .expect("execute-run command should parse");
 
         assert!(matches!(cli.command, Command::ExecuteRun { run_id: 1 }));
+    }
+
+    #[test]
+    fn parses_register_artifacts() {
+        let cli = Cli::try_parse_from(["vizfold", "register-artifacts", "1"])
+            .expect("register-artifacts command should parse");
+
+        assert!(matches!(
+            cli.command,
+            Command::RegisterArtifacts { run_id: 1 }
+        ));
     }
 
     #[tokio::test]
