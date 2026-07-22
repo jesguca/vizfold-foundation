@@ -28,8 +28,8 @@ enum Command {
     Show(ShowArgs),
     /// Queue a run for a supported model backend.
     QueueRun(QueueRunArgs),
-    /// Execute a queued run for a supported model backend.
-    ExecuteRun(ExecuteRunArgs),
+    /// Execute a queued run.
+    ExecuteRun { run_id: i32 },
 }
 
 #[derive(Debug, Args)]
@@ -106,18 +106,6 @@ struct OpenfoldQueueArgs {
     use_precomputed_alignments: bool,
 }
 
-#[derive(Debug, Args)]
-struct ExecuteRunArgs {
-    #[command(subcommand)]
-    model: ExecuteRunModel,
-}
-
-#[derive(Debug, Subcommand)]
-enum ExecuteRunModel {
-    /// Execute an OpenFold run.
-    Openfold { run_id: i32 },
-}
-
 pub async fn run() -> Result<(), DbErr> {
     let cli = Cli::parse();
     let database = db::connect_and_migrate().await?;
@@ -139,12 +127,29 @@ pub async fn run() -> Result<(), DbErr> {
         Command::QueueRun(queue) => match queue.model {
             QueueRunModel::Openfold(args) => queue_openfold_run(&database, args).await?,
         },
-        Command::ExecuteRun(execute) => match execute.model {
-            ExecuteRunModel::Openfold { run_id } => execute_openfold(&database, run_id).await?,
-        },
+        Command::ExecuteRun { run_id } => execute_run(&database, run_id).await?,
     }
 
     Ok(())
+}
+
+async fn execute_run(database: &sea_orm::DatabaseConnection, run_id: i32) -> Result<(), DbErr> {
+    let run = runs::get_run_with_artifacts(database, run_id)
+        .await?
+        .ok_or_else(|| DbErr::Custom(format!("run {run_id} does not exist")))?
+        .run;
+    let backend = model_backends::find_by_id(database, run.model_backend_id)
+        .await?
+        .ok_or_else(|| DbErr::Custom("run model backend does not exist".into()))?;
+
+    if backend.slug != "openfold" {
+        return Err(DbErr::Custom(format!(
+            "run {run_id} uses backend '{}'; only OpenFold runs can be executed",
+            backend.slug
+        )));
+    }
+
+    execute_openfold(database, run_id).await
 }
 
 async fn execute_openfold(
@@ -541,16 +546,11 @@ mod tests {
     }
 
     #[test]
-    fn parses_execute_openfold_run() {
-        let cli = Cli::try_parse_from(["vizfold", "execute-run", "openfold", "1"])
+    fn parses_execute_run() {
+        let cli = Cli::try_parse_from(["vizfold", "execute-run", "1"])
             .expect("execute-run command should parse");
 
-        assert!(matches!(
-            cli.command,
-            Command::ExecuteRun(ExecuteRunArgs {
-                model: ExecuteRunModel::Openfold { run_id: 1 }
-            })
-        ));
+        assert!(matches!(cli.command, Command::ExecuteRun { run_id: 1 }));
     }
 
     #[tokio::test]
