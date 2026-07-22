@@ -4,6 +4,7 @@
 set -euo pipefail
 
 REPO=${OPENFOLD_HOME:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && until [ -f setup.py ] || [ "$PWD" = / ]; do cd ..; done; pwd)}
+. "$REPO/install/config.sh"
 PREFIX=${OPENFOLD_PREFIX:-$HOME/openfold}
 AF2=${OPENFOLD_AF2_ROOT:-}          # a site with a database mirror names it
 ENV_NAME=${OPENFOLD_ENV_NAME:-openfold-env}
@@ -86,6 +87,7 @@ print(f'{v.value // 1000}.{v.value % 1000 // 10}')" 2>/dev/null)} || true
 ENV_CUDA=$(ls "$CONDA_PREFIX"/lib/libnvrtc.so.*.*.* 2>/dev/null |
     sed 's/.*so\.//; s/\.[0-9]*$//' | head -1) || true
 older() { [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | head -1)" = "$1" ] && [ "$1" != "$2" ]; }
+if [ -n "${DRIVER_CUDA:-}" ]; then export OPENFOLD_DRIVER_CUDA=$DRIVER_CUDA; fi
 
 if [ -n "${DRIVER_CUDA:-}" ] && [ -n "${ENV_CUDA:-}" ] && older "$DRIVER_CUDA" "$ENV_CUDA"; then
     NVRTC=$PREFIX/nvrtc-$DRIVER_CUDA
@@ -155,6 +157,15 @@ EXAMPLE=${OPENFOLD_EXAMPLE:-6KWC_1}
 FOLD_ARGS=${OPENFOLD_FOLD_ARGS:-}
 STRUCTURE=relaxed
 case $FOLD_ARGS in *skip_relaxation*) STRUCTURE=unrelaxed ;; esac
+
+step config
+export OPENFOLD_HOME=$REPO OPENFOLD_PREFIX=$PREFIX OPENFOLD_ENV_NAME=$ENV_NAME
+export OPENFOLD_ENV_PREFIX=$CONDA_PREFIX OPENFOLD_DATA_DIR=$DATA OPENFOLD_MAX_CUDA=$MAX_CUDA
+config::save OPENFOLD_HOME OPENFOLD_PREFIX OPENFOLD_ENV_NAME OPENFOLD_ENV_PREFIX \
+    OPENFOLD_DATA_DIR OPENFOLD_SITE OPENFOLD_AF2_ROOT OPENFOLD_MAX_CUDA \
+    OPENFOLD_DRIVER_CUDA OPENFOLD_GPU_ACCOUNT OPENFOLD_GPU_PARTITION \
+    OPENFOLD_GPU_RESOURCES OPENFOLD_EXAMPLE OPENFOLD_FOLD_ARGS
+
 cat <<EOF
 == ready (+$((SECONDS))s)
 
