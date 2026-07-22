@@ -1,8 +1,8 @@
 # interactive.sh -- ask before guessing. Library; source it, do not run it.
 #
 #   . "$REPO/install/interactive.sh"
-#   prefix=$(interactive::resolve VIZFOLD_PREFIX "install prefix" "$HOME/openfold")
-#   alloc=$(interactive::choose VIZFOLD_ALLOCATION allocation bbol cqj)
+#   prefix=$(interactive::resolve OPENFOLD_PREFIX "install prefix" "$HOME/openfold")
+#   alloc=$(interactive::choose OPENFOLD_ALLOCATION allocation bbol cqj)
 #
 # Both echo the chosen value and return non-zero if there is none, leaving the
 # caller's `set -e` to stop. Prompts read /dev/tty, not stdin, which under

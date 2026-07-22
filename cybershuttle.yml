@@ -21,9 +21,8 @@ workspace:
 additional_dependencies:
   modules: []
   conda:
-    - cuda-version=12.8
     - cuda-nvcc
-    - cuda-cudart-dev
+    - cuda-libraries-dev
     - gcc=12.4
     - python=3.11
     - pip

@@ -1,19 +1,19 @@
 #!/bin/bash
 # Install OpenFold, anywhere. Add a cluster as install/sites/<ClusterName>.sh.
 #
-#   curl -sL https://raw.githubusercontent.com/yasithdev/vizfold-foundation/openfold-delta-install/install.sh | bash
+#   curl -sL https://raw.githubusercontent.com/yasithdev/vizfold-foundation/delta-install-upstream/install.sh | bash
 #   ./install.sh
 set -euo pipefail
 
-REPO_URL=${VIZFOLD_REPO_URL:-https://github.com/yasithdev/vizfold-foundation.git}
-BRANCH=${VIZFOLD_BRANCH:-openfold-delta-install}   # -> jesguca/rust-core once merged
-SRC=${VIZFOLD_SRC:-$HOME/vizfold-src}   # outlives the job; the editable install points here
+REPO_URL=${OPENFOLD_REPO_URL:-https://github.com/yasithdev/vizfold-foundation.git}
+BRANCH=${OPENFOLD_BRANCH:-openfold-delta-install}   # -> jesguca/main once merged
+SRC=${OPENFOLD_SRC:-$HOME/openfold-src}   # outlives the job; the editable install points here
 
 die() { echo "FATAL: $*" >&2; exit 1; }
 
 # Piped into bash BASH_SOURCE is unusable; under sbatch it is the spool copy.
-if [ -n "${VIZFOLD_OPENFOLD_HOME:-}" ]; then
-    REPO=$VIZFOLD_OPENFOLD_HOME
+if [ -n "${OPENFOLD_HOME:-}" ]; then
+    REPO=$OPENFOLD_HOME
 elif [ -f "${SLURM_SUBMIT_DIR:-$PWD}/setup.py" ]; then
     REPO=${SLURM_SUBMIT_DIR:-$PWD}
 else
@@ -40,9 +40,9 @@ SITES=$REPO/install/sites
 
 CLUSTER=$(scontrol show config 2>/dev/null | awk '$1 == "ClusterName" { print $3 }') || true
 [ -n "${CLUSTER:-}" ] && [ -f "$SITES/$CLUSTER.sh" ] || CLUSTER=local
-SITE=$(interactive::resolve VIZFOLD_SITE "site" "$CLUSTER")
+SITE=$(interactive::resolve OPENFOLD_SITE "site" "$CLUSTER")
 test -f "$SITES/$SITE.sh" ||
     die "no site script for $SITE; have: $(cd "$SITES" && echo *.sh | sed 's/\.sh//g')"
 
-export VIZFOLD_OPENFOLD_HOME=$REPO
+export OPENFOLD_HOME=$REPO
 exec bash "$SITES/$SITE.sh"
